@@ -319,7 +319,7 @@ def run_interactive_tui(report: InvestigationReport) -> None:
         menu.add_row("[6]", f"Matched Social Profiles ({len(report.social_profiles)})")
         menu.add_row("[7]", "Threat & Transparency Indexers (CordCat, Breaches, GitHub)")
         menu.add_row("[8]", "Module Execution Diagnostics")
-        menu.add_row("[9]", "Open Standalone Anti-Slop HTML Dossier in Browser")
+        menu.add_row("[9]", "Open HTML in Browser")
         menu.add_row("[0]", "Exit Explorer")
 
         console.print(menu)
