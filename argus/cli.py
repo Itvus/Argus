@@ -755,7 +755,19 @@ def tui_command(
         except Exception as ex:
             console.print(f"[bold red]Error parsing JSON report:[/bold red] {ex}")
             raise typer.Exit(code=1)
-    elif target:
+    else:
+        if not target:
+            try:
+                target = console.input(
+                    "[bold cyan]Enter target (Discord Snowflake or username): [/bold cyan]"
+                ).strip()
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[dim]Aborted.[/dim]")
+                raise typer.Exit(code=0)
+            if not target:
+                console.print("[dim]No target provided. Aborted.[/dim]")
+                raise typer.Exit(code=0)
+
         config = get_config(timeout=timeout, proxy=proxy)
         orchestrator = InvestigationOrchestrator(config=config)
         print_banner()
@@ -773,9 +785,6 @@ def tui_command(
             initial_phase="Initializing Investigation",
             initial_service="Resolving Target Entity...",
         )
-    else:
-        console.print("[bold red]Error:[/bold red] Provide either a target argument or --file <path>.")
-        raise typer.Exit(code=1)
 
     run_interactive_tui(report)
 

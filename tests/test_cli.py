@@ -88,6 +88,12 @@ def test_cli_tui_help():
     assert "interactive" in explore_help.lower() or "explore" in explore_help.lower()
 
 
+def test_cli_tui_prompt_abort():
+    result = runner.invoke(app, ["tui"], input="\n")
+    assert result.exit_code == 0
+    assert "Enter target" in result.stdout or "Aborted" in result.stdout
+
+
 def test_config_proxy_precedence(monkeypatch):
     from argus.config import Config
 
