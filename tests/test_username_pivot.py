@@ -116,7 +116,7 @@ async def test_fetch_and_extract_leads_strips_noise():
     mock_client.get.return_value = mock_resp
 
     sem = asyncio.Semaphore(1)
-    invites, tags, ids, emails = await _fetch_and_extract_leads(
+    invites, tags, ids, emails, crypto, messaging = await _fetch_and_extract_leads(
         "https://openweaver.com/user/SecurityDev",
         mock_client,
         sem,
@@ -135,3 +135,54 @@ async def test_fetch_and_extract_leads_strips_noise():
     # Footer and script emails should be completely absent
     assert not any("openweaver.com" in em for em in emails)
     assert not any("bootswatch" in em for em in emails)
+
+
+def test_extract_crypto_leads():
+    from argus.modules.username_pivot import extract_crypto_leads
+
+    sample = (
+        "Donate BTC at bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq or tip 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa.\n"
+        "ETH wallet: 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045.\n"
+        "Here is a git commit: 0x4f3c8a9e1234567890abcdef1234567890abcdef (commit).\n"
+        "Solana tip: HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH (phantom/sol).\n"
+        "Random base58 string 5Hn7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YW without context."
+    )
+    leads = extract_crypto_leads(sample)
+    networks = {lead.network: lead.address for lead in leads}
+
+    assert "Bitcoin" in networks
+    assert "Ethereum" in networks
+    assert "Solana" in networks
+
+    # Check addresses
+    assert "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" in [l.address for l in leads]
+    assert "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" in [l.address for l in leads]
+    assert "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH" in [l.address for l in leads]
+
+    # Verify commit hash was rejected
+    assert not any("0x4f3c8a9e" in l.address for l in leads)
+    # Verify un-contextualized base58 was rejected
+    assert not any("5Hn7cABqLq46Es1jh92dQQisAq" in l.address for l in leads)
+
+
+def test_extract_messaging_leads():
+    from argus.modules.username_pivot import extract_messaging_leads
+
+    sample = (
+        "Reach me on Telegram: t.me/sec_operative or tg: @devops_lead. "
+        "Ignore platform link t.me/share and t.me/joinchat. "
+        "Matrix: @alice:matrix.org or @bob:federation.chat. "
+        "Signal: https://signal.me/#p/sec.42 or signal: my_alias."
+    )
+    leads = extract_messaging_leads(sample, site_url="https://secops.com/profile")
+    handles = {l.handle for l in leads}
+
+    assert "@sec_operative" in handles
+    assert "@devops_lead" in handles
+    assert "@alice:matrix.org" in handles
+    assert "@bob:federation.chat" in handles
+
+    # Verify platform noise rejected
+    assert "@share" not in handles
+    assert "@joinchat" not in handles
+    assert "@secops" not in handles

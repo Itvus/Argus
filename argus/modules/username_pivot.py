@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 import httpx
 
-from argus.models import PivotLeads, SocialProfile
+from argus.models import CryptoLead, MessagingLead, PivotLeads, SocialProfile
 from argus.modules.snowflake import is_valid_snowflake
 
 logger = logging.getLogger("argus.username_pivot")
@@ -213,6 +213,128 @@ def clean_discord_invites(raw_invites: list[str], site_url: str = "") -> set[str
     return cleaned
 
 
+def extract_crypto_leads(text: str) -> list[CryptoLead]:
+    """Extract Bitcoin, Ethereum, and Solana addresses with strict anti-false-positive validation."""
+    leads: list[CryptoLead] = []
+    seen: set[str] = set()
+
+    # 1. Bitcoin Bech32 (bc1...)
+    for m in re.finditer(r"\b(bc1[ac-hj-np-z02-9]{38,59})\b", text, re.IGNORECASE):
+        addr = m.group(1).lower()
+        if addr not in seen:
+            seen.add(addr)
+            leads.append(CryptoLead(network="Bitcoin", address=addr))
+
+    # 2. Bitcoin Base58 (starts with 1 or 3, length 26-35) - strictly requires crypto context window
+    for m in re.finditer(r"\b([13][a-km-zA-HJ-NP-Z1-9]{25,34})\b", text):
+        addr = m.group(1)
+        start = max(0, m.start() - 40)
+        end = min(len(text), m.end() + 40)
+        window = text[start:end].lower()
+        if re.search(r"\b(btc|bitcoin|wallet|donate|tip|crypto)\b", window):
+            if addr not in seen:
+                seen.add(addr)
+                leads.append(CryptoLead(network="Bitcoin", address=addr))
+
+    # 3. Ethereum (0x... 40 hex chars)
+    for m in re.finditer(r"\b(0x[a-fA-F0-9]{40})\b", text):
+        addr = m.group(1)
+        # Check immediate segment bounded by newline or proximity
+        seg_start = max(0, m.start() - 30)
+        nl_before = text.rfind("\n", seg_start, m.start())
+        if nl_before != -1:
+            seg_start = nl_before + 1
+
+        seg_end = min(len(text), m.end() + 30)
+        nl_after = text.find("\n", m.end(), seg_end)
+        if nl_after != -1:
+            seg_end = nl_after
+
+        local_seg = text[seg_start:seg_end].lower()
+        if re.search(r"\b(commit|tree|blob|sha1?)\b", local_seg):
+            continue
+
+        # Broader context window (40 chars) for crypto relevance
+        ctx_start = max(0, m.start() - 40)
+        ctx_end = min(len(text), m.end() + 40)
+        ctx_window = text[ctx_start:ctx_end].lower()
+
+        # Require crypto context or mixed-case address (EIP-55 standard)
+        has_mixed_case = any(c.isupper() for c in addr[2:]) and any(c.islower() for c in addr[2:])
+        has_context = bool(re.search(r"\b(eth|ethereum|wallet|address|donate|tip|crypto|web3|ens|polygon|arbitrum|optimism)\b", ctx_window))
+        if has_mixed_case or has_context:
+            if addr.lower() not in seen:
+                seen.add(addr.lower())
+                leads.append(CryptoLead(network="Ethereum", address=addr))
+
+    # 4. Solana (Base58 32-44 chars) - strictly requires explicit solana context
+    for m in re.finditer(r"\b([1-9A-HJ-NP-Za-km-z]{32,44})\b", text):
+        addr = m.group(1)
+        start = max(0, m.start() - 25)
+        end = min(len(text), m.end() + 25)
+        window = text[start:end].lower()
+        if re.search(r"\b(sol|solana|phantom|backpack|sollet)\b", window):
+            if addr not in seen:
+                seen.add(addr)
+                leads.append(CryptoLead(network="Solana", address=addr))
+
+    return leads
+
+
+def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead]:
+    """Extract Telegram, Matrix, and Signal handles with anti-noise platform filtering."""
+    leads: list[MessagingLead] = []
+    seen: set[str] = set()
+
+    site_name = ""
+    if site_url:
+        site_name = get_base_domain(site_url).split(".")[0]
+
+    ignored_tg = {
+        "share", "joinchat", "addstickers", "proxy", "socks", "setlanguage",
+        "iv", "telegram", "bot", "s", "c", "login", "app", "channel", "group",
+        "help", "support", "faq", "terms", "privacy", "about"
+    }
+    if site_name:
+        ignored_tg.add(site_name)
+
+    # 1. Telegram links (t.me/<username>)
+    for m in re.finditer(r"(?:https?://)?(?:t\.me|telegram\.me)/([a-zA-Z0-9_]{5,32})\b", text, re.IGNORECASE):
+        handle = m.group(1)
+        if handle.lower() not in ignored_tg and handle.lower() not in seen:
+            seen.add(handle.lower())
+            leads.append(MessagingLead(platform="Telegram", handle=f"@{handle}", url=f"https://t.me/{handle}"))
+
+    # Explicit Telegram text labels ("telegram: @username" or "tg: username")
+    for m in re.finditer(r"(?:telegram|tg)[\s:=]+@?([a-zA-Z0-9_]{5,32})\b", text, re.IGNORECASE):
+        handle = m.group(1)
+        if handle.lower() not in ignored_tg and handle.lower() not in seen:
+            seen.add(handle.lower())
+            leads.append(MessagingLead(platform="Telegram", handle=f"@{handle}", url=f"https://t.me/{handle}"))
+
+    # 2. Matrix handles (@username:matrix.org)
+    for m in re.finditer(r"@([a-zA-Z0-9_.-]{2,64}:[a-zA-Z0-9_.-]+\.[a-zA-Z]{2,10})\b", text):
+        handle = m.group(1)
+        if handle.lower() not in seen:
+            seen.add(handle.lower())
+            leads.append(MessagingLead(platform="Matrix", handle=f"@{handle}"))
+
+    # 3. Signal links and text markers
+    for m in re.finditer(r"(?:https?://)?signal\.me/#p/([a-zA-Z0-9_.-]+)\b", text, re.IGNORECASE):
+        handle = m.group(1)
+        if handle.lower() not in seen:
+            seen.add(handle.lower())
+            leads.append(MessagingLead(platform="Signal", handle=handle, url=f"https://signal.me/#p/{handle}"))
+
+    for m in re.finditer(r"(?:signal)[\s:=]+@?([a-zA-Z0-9_.-]{3,32})\b", text, re.IGNORECASE):
+        handle = m.group(1)
+        if handle.lower() not in seen and handle.lower() not in ("desktop", "messenger", "protocol", "app"):
+            seen.add(handle.lower())
+            leads.append(MessagingLead(platform="Signal", handle=handle))
+
+    return leads
+
+
 class MaigretProgressNotifier:
     """Custom notifier forwarding per-service scan progress events to argus."""
 
@@ -252,18 +374,20 @@ async def _fetch_and_extract_leads(
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
     target_username: str = "",
-) -> Tuple[set[str], set[str], set[str], set[str]]:
+) -> Tuple[set[str], set[str], set[str], set[str], list[CryptoLead], list[MessagingLead]]:
     """Fetch profile URL content and scan clean user bio text for pivot leads."""
     invites: set[str] = set()
     tags: set[str] = set()
     ids: set[str] = set()
     emails: set[str] = set()
+    crypto: list[CryptoLead] = []
+    messaging: list[MessagingLead] = []
 
     async with semaphore:
         try:
             resp = await client.get(url, follow_redirects=True)
             if resp.status_code != 200:
-                return invites, tags, ids, emails
+                return invites, tags, ids, emails, crypto, messaging
 
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -378,16 +502,23 @@ async def _fetch_and_extract_leads(
             found_emails = EMAIL_REGEX.findall(text_to_search)
             emails.update(clean_emails(found_emails, site_url=url, target_username=target_username))
 
+            # 5. Cryptocurrency wallet addresses (Bitcoin, Ethereum, Solana)
+            crypto.extend(extract_crypto_leads(text_to_search))
+
+            # 6. Messaging handles (Telegram, Matrix, Signal)
+            messaging.extend(extract_messaging_leads(text_to_search, site_url=url))
+
         except Exception:
             pass
 
-    return invites, tags, ids, emails
+    return invites, tags, ids, emails, crypto, messaging
 
 
 async def _run_maigret_library(
     username: str,
     all_sites: bool = False,
     timeout: int = 10,
+    proxy: Optional[str] = None,
     on_site_check: Optional[Callable[[int, int, str], None]] = None,
 ) -> list[SocialProfile]:
     """Run Maigret using direct Python library import with live per-service progress."""
@@ -416,6 +547,7 @@ async def _run_maigret_library(
         logger=m_logger,
         query_notify=notifier,
         timeout=timeout,
+        proxy=proxy,
         no_progressbar=True,
     )
 
@@ -455,6 +587,7 @@ async def _run_maigret_subprocess(
     username: str,
     all_sites: bool = False,
     timeout: int = 15,
+    proxy: Optional[str] = None,
 ) -> list[SocialProfile]:
     """Fallback runner executing Maigret as an external subprocess."""
     profiles: list[SocialProfile] = []
@@ -475,6 +608,8 @@ async def _run_maigret_subprocess(
         ]
         if not all_sites:
             cmd.extend(["--top-sites", "40"])
+        if proxy:
+            cmd.extend(["--proxy", proxy])
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -530,6 +665,7 @@ async def run_username_pivot(
     username: str,
     all_sites: bool = False,
     timeout: int = 15,
+    proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Tuple[list[SocialProfile], PivotLeads, str]:
     """Execute username enumeration across platforms and extract OSINT leads with progress reporting.
@@ -551,6 +687,7 @@ async def run_username_pivot(
             clean_username,
             all_sites=all_sites,
             timeout=timeout,
+            proxy=proxy,
             on_site_check=on_site_check,
         )
     except Exception as lib_ex:
@@ -558,7 +695,7 @@ async def run_username_pivot(
         try:
             if progress_callback:
                 progress_callback("Enumerating Platforms", 1, 1, "Subprocess Maigret Fallback")
-            profiles = await _run_maigret_subprocess(clean_username, all_sites=all_sites, timeout=timeout)
+            profiles = await _run_maigret_subprocess(clean_username, all_sites=all_sites, timeout=timeout, proxy=proxy)
             status_msg = "Completed via Maigret subprocess fallback."
         except Exception as sub_ex:
             return [], PivotLeads(), f"Maigret enumeration failed: {sub_ex}"
@@ -579,7 +716,7 @@ async def run_username_pivot(
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
-        async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=headers, proxy=proxy) as client:
             done_count = 0
             total_scrapable = len(scrapable_profiles)
 
@@ -602,18 +739,37 @@ async def run_username_pivot(
             tasks = [wrapped_fetch(p) for p in scrapable_profiles]
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
 
+            raw_crypto: list[CryptoLead] = []
+            raw_messaging: list[MessagingLead] = []
+
             for res in batch_results:
-                if isinstance(res, tuple) and len(res) == 4:
-                    invites, tags, ids, emails = res
+                if isinstance(res, tuple) and len(res) == 6:
+                    invites, tags, ids, emails, cr, msg = res
                     leads.discovered_invites.extend(invites)
                     leads.discovered_discord_tags.extend(tags)
                     leads.discovered_discord_ids.extend(ids)
                     leads.discovered_emails.extend(emails)
+                    raw_crypto.extend(cr)
+                    raw_messaging.extend(msg)
 
         # De-duplicate leads
         leads.discovered_invites = sorted(list(set(leads.discovered_invites)))
         leads.discovered_discord_tags = sorted(list(set(leads.discovered_discord_tags)))
         leads.discovered_discord_ids = sorted(list(set(leads.discovered_discord_ids)))
         leads.discovered_emails = sorted(list(set(leads.discovered_emails)))
+
+        seen_crypto = set()
+        for c in raw_crypto:
+            key = (c.network, c.address.lower())
+            if key not in seen_crypto:
+                seen_crypto.add(key)
+                leads.discovered_crypto.append(c)
+
+        seen_msg = set()
+        for m in raw_messaging:
+            key = (m.platform, m.handle.lower())
+            if key not in seen_msg:
+                seen_msg.add(key)
+                leads.discovered_messaging.append(m)
 
     return profiles, leads, status_msg

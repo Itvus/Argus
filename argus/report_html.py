@@ -44,7 +44,16 @@ def render_html_report(report: InvestigationReport) -> str:
     discord_id_count = len(report.pivot_leads.discovered_discord_ids)
     invite_count = len(report.pivot_leads.discovered_invites)
     tag_count = len(report.pivot_leads.discovered_discord_tags)
-    total_leads = email_count + discord_id_count + invite_count + tag_count
+    crypto_count = len(report.pivot_leads.discovered_crypto)
+    messaging_count = len(report.pivot_leads.discovered_messaging)
+    total_leads = (
+        email_count
+        + discord_id_count
+        + invite_count
+        + tag_count
+        + crypto_count
+        + messaging_count
+    )
     breach_count = len(report.breaches)
 
     # 1. Discord Snowflake card HTML
@@ -153,6 +162,77 @@ def render_html_report(report: InvestigationReport) -> str:
         </div>
         """
 
+    # Gaming Ecosystem HTML (Minecraft & Steam)
+    gaming_html = ""
+    if report.gaming and (report.gaming.minecraft or report.gaming.steam):
+        gaming_cards = []
+        if report.gaming.minecraft:
+            mc = report.gaming.minecraft
+            gaming_cards.append(
+                f"""
+                <div class="lead-group">
+                  <span class="lead-group-title">Minecraft (Mojang API)</span>
+                  <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Player Username</span>
+                      <span class="telemetry-value font-semibold">{html.escape(mc.username)}</span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Formatted UUID</span>
+                      <span class="telemetry-value font-mono copyable" onclick="copyText('{mc.uuid_formatted}')">
+                        {mc.uuid_formatted} <button class="btn-copy" title="Copy">{ICON_COPY}</button>
+                      </span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Raw Mojang ID</span>
+                      <span class="telemetry-value font-mono">{mc.uuid}</span>
+                    </div>
+                  </div>
+                </div>
+                """
+            )
+        if report.gaming.steam:
+            st = report.gaming.steam
+            vac_badge = '<span class="text-emerald font-semibold">Clean (No Bans)</span>' if not st.vac_banned else '<span class="text-rose font-semibold">VAC Banned</span>'
+            gaming_cards.append(
+                f"""
+                <div class="lead-group mt-3">
+                  <span class="lead-group-title">Steam Community</span>
+                  <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Custom URL</span>
+                      <span class="telemetry-value font-semibold"><a href="{html.escape(st.profile_url)}" target="_blank" rel="noopener noreferrer" class="link-external">@{html.escape(st.custom_url)} {ICON_LINK}</a></span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">SteamID64</span>
+                      <span class="telemetry-value font-mono copyable" onclick="copyText('{st.steam_id_64}')">
+                        {st.steam_id_64} <button class="btn-copy" title="Copy">{ICON_COPY}</button>
+                      </span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">VAC Ban Status</span>
+                      <span class="telemetry-value">{vac_badge}</span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Real Name / Location</span>
+                      <span class="telemetry-value">{html.escape(st.real_name or 'N/A')} ({html.escape(st.location or 'N/A')})</span>
+                    </div>
+                  </div>
+                </div>
+                """
+            )
+
+        gaming_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Gaming Ecosystem Identity</span>
+          </div>
+          <div class="leads-container">
+            {''.join(gaming_cards)}
+          </div>
+        </div>
+        """
+
     # 3. Matched Profiles HTML
     social_profiles_html = ""
     if report.social_profiles:
@@ -249,6 +329,42 @@ def render_html_report(report: InvestigationReport) -> str:
                 <div class="lead-group">
                   <span class="lead-group-title">Legacy Discord Tags ({len(leads.discovered_discord_tags)})</span>
                   <div class="lead-pills-wrap">{tag_items}</div>
+                </div>
+                """
+            )
+
+        if leads.discovered_crypto:
+            crypto_items = "".join(
+                f"""<div class="lead-pill font-mono copyable" onclick="copyText('{html.escape(c.address)}')">
+                      <span class="tag">{html.escape(c.network)}</span>
+                      <span>{html.escape(c.address)}</span>
+                      <button class="btn-copy" title="Copy">{ICON_COPY}</button>
+                    </div>"""
+                for c in leads.discovered_crypto
+            )
+            lead_cards.append(
+                f"""
+                <div class="lead-group">
+                  <span class="lead-group-title">Crypto Wallet Addresses ({len(leads.discovered_crypto)})</span>
+                  <div class="lead-pills-wrap">{crypto_items}</div>
+                </div>
+                """
+            )
+
+        if leads.discovered_messaging:
+            msg_items = "".join(
+                f"""<div class="lead-pill font-mono">
+                      <span class="tag">{html.escape(m.platform)}</span>
+                      <span>{html.escape(m.handle)}</span>
+                      {f'<a href="{html.escape(m.url)}" target="_blank" rel="noopener noreferrer" class="link-external">{ICON_LINK}</a>' if m.url else ''}
+                    </div>"""
+                for m in leads.discovered_messaging
+            )
+            lead_cards.append(
+                f"""
+                <div class="lead-group">
+                  <span class="lead-group-title">Messaging Handles ({len(leads.discovered_messaging)})</span>
+                  <div class="lead-pills-wrap">{msg_items}</div>
                 </div>
                 """
             )
@@ -1027,6 +1143,7 @@ def render_html_report(report: InvestigationReport) -> str:
     <!-- Main Content Flow -->
     {snowflake_html}
     {profile_html}
+    {gaming_html}
     {social_profiles_html}
     {leads_html}
     {enrichment_html}

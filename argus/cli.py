@@ -279,7 +279,46 @@ def render_report_rich(report: InvestigationReport) -> None:
             )
         )
 
-    # 6. GitHub Public Pivot
+    # 6. Gaming Ecosystem (Minecraft & Steam)
+    if report.gaming and (report.gaming.minecraft or report.gaming.steam):
+        game_table = Table(box=box.SIMPLE_HEAVY, border_style="bright_blue", show_header=True)
+        game_table.add_column("Gaming Platform", style="bold bright_blue", width=22)
+        game_table.add_column("Identity & Telemetry", style="white")
+
+        if report.gaming.minecraft:
+            mc = report.gaming.minecraft
+            mc_info = (
+                f"Player Username: [bold]{mc.username}[/bold]\n"
+                f"Formatted UUID: [cyan]{mc.uuid_formatted}[/cyan]\n"
+                f"Skin Render: [dim]{mc.skin_render_url}[/dim]"
+            )
+            game_table.add_row("Minecraft (Mojang)", mc_info)
+
+        if report.gaming.steam:
+            st = report.gaming.steam
+            vac_text = "[bold green]Clean (No Bans)[/bold green]" if not st.vac_banned else "[bold red]VAC BANNED[/bold red]"
+            st_info = (
+                f"Custom URL: [bold]{st.custom_url}[/bold]\n"
+                f"SteamID64: [cyan]{st.steam_id_64}[/cyan]\n"
+                f"Profile Link: [link={st.profile_url}]{st.profile_url}[/link]\n"
+                f"VAC Status: {vac_text}"
+            )
+            if st.real_name:
+                st_info += f"\nReal Name: {st.real_name}"
+            if st.location:
+                st_info += f"\nLocation: {st.location}"
+            game_table.add_row("Steam Community", st_info)
+
+        console.print(
+            Panel(
+                game_table,
+                title="[bold bright_blue]Gaming Ecosystem Identity Pivots[/bold bright_blue]",
+                border_style="bright_blue",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7. GitHub Public Pivot
     if report.github_pivot:
         gh = report.github_pivot
         gh_table = Table(box=box.SIMPLE, show_header=False)
@@ -340,6 +379,8 @@ def render_report_rich(report: InvestigationReport) -> None:
     leads = report.pivot_leads
     has_leads = (
         leads.discovered_emails
+        or leads.discovered_crypto
+        or leads.discovered_messaging
         or leads.discovered_discord_ids
         or leads.discovered_discord_tags
         or leads.discovered_invites
@@ -352,6 +393,12 @@ def render_report_rich(report: InvestigationReport) -> None:
 
         if leads.discovered_emails:
             leads_table.add_row("Emails", f"[bold green]{', '.join(leads.discovered_emails)}[/bold green]")
+        if leads.discovered_crypto:
+            crypto_lines = [f"[{c.network}] [cyan]{c.address}[/cyan]" for c in leads.discovered_crypto]
+            leads_table.add_row("Crypto Wallets", "\n".join(crypto_lines))
+        if leads.discovered_messaging:
+            msg_lines = [f"[{m.platform}] [magenta]{m.handle}[/magenta]" for m in leads.discovered_messaging]
+            leads_table.add_row("Messaging Handles", "\n".join(msg_lines))
         if leads.discovered_discord_ids:
             leads_table.add_row("Discord User IDs", ", ".join(leads.discovered_discord_ids))
         if leads.discovered_discord_tags:
@@ -433,6 +480,12 @@ def scan_command(
         "-w",
         help="Open HTML report in default browser (creates temporary file if --html is omitted).",
     ),
+    proxy: Optional[str] = typer.Option(
+        None,
+        "--proxy",
+        "-x",
+        help="Proxy URL (e.g. socks5://127.0.0.1:9050 or http://user:pass@host:port).",
+    ),
     timeout: int = typer.Option(
         15,
         "--timeout",
@@ -441,7 +494,7 @@ def scan_command(
     ),
 ) -> None:
     """Smart scan: Automatically detects Snowflake ID or username and executes investigative pivots."""
-    config = get_config(timeout=timeout)
+    config = get_config(timeout=timeout, proxy=proxy)
     orchestrator = InvestigationOrchestrator(config=config)
 
     report: InvestigationReport
@@ -527,6 +580,12 @@ def snowflake_command(
         "-w",
         help="Open HTML report in default browser (creates temporary file if --html is omitted).",
     ),
+    proxy: Optional[str] = typer.Option(
+        None,
+        "--proxy",
+        "-x",
+        help="Proxy URL (e.g. socks5://127.0.0.1:9050 or http://user:pass@host:port).",
+    ),
     timeout: int = typer.Option(
         15,
         "--timeout",
@@ -542,7 +601,7 @@ def snowflake_command(
         )
         raise typer.Exit(code=1)
 
-    config = get_config(timeout=timeout)
+    config = get_config(timeout=timeout, proxy=proxy)
     orchestrator = InvestigationOrchestrator(config=config)
 
     if json_output:
@@ -645,6 +704,82 @@ def config_command() -> None:
     )
 
 
+@app.command(name="tui", context_settings=CONTEXT_SETTINGS)
+@app.command(name="explore", context_settings=CONTEXT_SETTINGS)
+def tui_command(
+    target: Optional[str] = typer.Argument(
+        None,
+        help="Discord Snowflake ID or username handle to scan and explore interactively.",
+    ),
+    file: Optional[Path] = typer.Option(
+        None,
+        "--file",
+        "-f",
+        help="Load existing JSON investigation report instead of running new scan.",
+    ),
+    pivot: bool = typer.Option(
+        False,
+        "--pivot",
+        "-p",
+        help="Automatically pivot into username enumeration if scanning a Snowflake.",
+    ),
+    all_sites: bool = typer.Option(
+        False,
+        "--all-sites",
+        "-a",
+        help="Check all sites supported by Maigret.",
+    ),
+    proxy: Optional[str] = typer.Option(
+        None,
+        "--proxy",
+        "-x",
+        help="Proxy URL (e.g. socks5://127.0.0.1:9050 or http://user:pass@host:port).",
+    ),
+    timeout: int = typer.Option(
+        15,
+        "--timeout",
+        "-t",
+        help="HTTP timeout per module in seconds.",
+    ),
+) -> None:
+    """Launch interactive terminal dashboard to explore investigation results."""
+    from argus.tui import run_interactive_tui
+
+    if file:
+        if not file.is_file():
+            console.print(f"[bold red]Error:[/bold red] File not found: {file}")
+            raise typer.Exit(code=1)
+        try:
+            report_data = json.loads(file.read_text(encoding="utf-8"))
+            report = InvestigationReport.model_validate(report_data)
+        except Exception as ex:
+            console.print(f"[bold red]Error parsing JSON report:[/bold red] {ex}")
+            raise typer.Exit(code=1)
+    elif target:
+        config = get_config(timeout=timeout, proxy=proxy)
+        orchestrator = InvestigationOrchestrator(config=config)
+        print_banner()
+
+        def do_investigation(cb: ProgressCallback) -> Any:
+            return orchestrator.run_investigation(
+                target=target,
+                pivot=pivot,
+                all_sites=all_sites,
+                progress_callback=cb,
+            )
+
+        report = run_with_progress(
+            do_investigation,
+            initial_phase="Initializing Investigation",
+            initial_service="Resolving Target Entity...",
+        )
+    else:
+        console.print("[bold red]Error:[/bold red] Provide either a target argument or --file <path>.")
+        raise typer.Exit(code=1)
+
+    run_interactive_tui(report)
+
+
 @app.command(name="man", context_settings=CONTEXT_SETTINGS)
 def man_command(
     roff: bool = typer.Option(
@@ -703,6 +838,10 @@ def man_command(
         "Inspect active configuration files, displaying discovered .env paths and masked statuses for all API keys.",
     )
     cmd_table.add_row(
+        "tui / explore <target>",
+        "Launch interactive terminal dashboard with menu-driven navigation across investigation sections.",
+    )
+    cmd_table.add_row(
         "man [--roff]",
         "Display this terminal manual page or emit standard UNIX troff format.",
     )
@@ -722,6 +861,7 @@ def man_command(
     opt_table.add_row("-o, --out <PATH>", "Save structured JSON investigation report to file.")
     opt_table.add_row("-H, --html <PATH>", "Save standalone HTML investigation report to file.")
     opt_table.add_row("-w, --view", "Open standalone HTML report in default browser (creates temporary file if --html is omitted).")
+    opt_table.add_row("-x, --proxy <URL>", "Route network requests through HTTP/HTTPS or SOCKS5 proxy (e.g. socks5://127.0.0.1:9050).")
     opt_table.add_row("-t, --timeout <SEC>", "Configurable HTTP timeout in seconds per module (default: 15s).")
     console.print(opt_table)
     console.print("")

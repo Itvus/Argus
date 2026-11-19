@@ -83,6 +83,7 @@ async def fetch_discord_profile(
     user_id: str,
     bot_token: Optional[str],
     timeout: int = 15,
+    proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Tuple[Optional[DiscordProfile], str, Optional[str]]:
     """Fetch user profile metadata from Discord REST API v10 with progress reporting.
@@ -110,7 +111,7 @@ async def fetch_discord_profile(
     }
     url = f"{DISCORD_API_BASE}/users/{user_id}"
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         try:
             resp = await client.get(url, headers=headers)
             if progress_callback:

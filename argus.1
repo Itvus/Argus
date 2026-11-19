@@ -6,10 +6,13 @@ argus \- fast, modular OSINT CLI tool for Discord Snowflakes, usernames, and cro
 [\fB\-v\fR|\fB\-\-version\fR] [\fB\-h\fR|\fB\-\-help\fR] \fICOMMAND\fR [\fIARGS\fR]...
 .br
 .B argus scan
-[\fB\-p\fR|\fB\-\-pivot\fR] [\fB\-a\fR|\fB\-\-all\-sites\fR] [\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fITARGET\fR
+[\fB\-p\fR|\fB\-\-pivot\fR] [\fB\-a\fR|\fB\-\-all\-sites\fR] [\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-H\fR|\fB\-\-html\fR \fIFILE\fR] [\fB\-w\fR|\fB\-\-view\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fITARGET\fR
 .br
 .B argus snowflake
-[\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fIUSER_ID\fR
+[\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-H\fR|\fB\-\-html\fR \fIFILE\fR] [\fB\-w\fR|\fB\-\-view\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fIUSER_ID\fR
+.br
+.B argus tui
+[\fB\-f\fR|\fB\-\-file\fR \fIFILE\fR] [\fB\-p\fR|\fB\-\-pivot\fR] [\fB\-a\fR|\fB\-\-all\-sites\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fITARGET\fR]
 .br
 .B argus config
 .br
@@ -45,6 +48,9 @@ Also queries Discord Bot REST API and CordCat indexer if configured.
 .B config
 Inspects active configuration files, displaying discovered \fB.env\fR locations and masked statuses for all API keys.
 .TP
+.B tui \fI[TARGET]\fR
+Interactive terminal user interface dashboard. Navigates investigation reports with keyboard shortcuts and menu-driven drill-downs. Also available as \fBexplore\fR.
+.TP
 .B man [\fB\-\-roff\fR]
 Displays the comprehensive terminal manual page. With \fB\-\-roff\fR, outputs standard UNIX troff format.
 
@@ -74,12 +80,18 @@ Write standalone HTML investigation report with interactive telemetry and no ext
 .BR \-w ", " \-\-view
 Open HTML investigation report in default system browser (creates a temporary file if \fB\-\-html\fR is omitted).
 .TP
+.BR \-x ", " \-\-proxy " \fIURL\fR"
+Route network traffic through HTTP, HTTPS, or SOCKS5 proxy (e.g. \fBsocks5://127.0.0.1:9050\fR).
+.TP
 .BR \-t ", " \-\-timeout " \fISECONDS\fR"
 Configurable HTTP timeout in seconds per module (default: 15).
 
 .SH ENVIRONMENT VARIABLES & CONFIGURATION
 .B argus
 reads settings from \fB.env\fR in the current working directory, \fB~/.argus/.env\fR, and system environment variables:
+.TP
+.B ARGUS_PROXY
+Proxy URL for outbound requests (\fBhttp://\fR, \fBhttps://\fR, \fBsocks5://\fR). Falls back to standard \fBALL_PROXY\fR, \fBHTTPS_PROXY\fR, \fBHTTP_PROXY\fR.
 .TP
 .B DISCORD_BOT_TOKEN
 Bot authorization token used for Discord REST API v10 user lookups, badge decoding, and CDN URLs.

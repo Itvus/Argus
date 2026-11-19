@@ -19,6 +19,7 @@ from argus.models import (
 )
 from argus.modules.discord_api import fetch_discord_profile
 from argus.modules.enrichment import check_breaches, fetch_github_pivot, query_cordcat
+from argus.modules.gaming import fetch_gaming_profiles
 from argus.modules.snowflake import decode_snowflake, is_valid_snowflake
 from argus.modules.username_pivot import run_username_pivot
 
@@ -137,12 +138,14 @@ class InvestigationOrchestrator:
             user_id=user_id,
             bot_token=self.config.discord_bot_token,
             timeout=self.config.timeout,
+            proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
         cordcat_task = query_cordcat(
             user_id=user_id,
             api_key=self.config.cordcat_api_key,
             timeout=self.config.timeout,
+            proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
 
@@ -234,6 +237,7 @@ class InvestigationOrchestrator:
                 user_id=lead_id,
                 bot_token=self.config.discord_bot_token,
                 timeout=self.config.timeout,
+                proxy=self.config.proxy,
                 progress_callback=progress_callback,
             )
             report.discord_profile = d_prof
@@ -245,6 +249,7 @@ class InvestigationOrchestrator:
                 user_id=lead_id,
                 api_key=self.config.cordcat_api_key,
                 timeout=self.config.timeout,
+                proxy=self.config.proxy,
                 progress_callback=progress_callback,
             )
             report.cordcat = cord_rec
@@ -266,11 +271,12 @@ class InvestigationOrchestrator:
             except Exception:
                 pass
 
-        # 1. Parallel execution: Maigret sweep + GitHub pivot
+        # 1. Parallel execution: Maigret sweep + GitHub pivot + Gaming ecosystem
         sweep_task = run_username_pivot(
             username=username,
             all_sites=all_sites,
             timeout=self.config.timeout,
+            proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
         github_task = fetch_github_pivot(
@@ -278,11 +284,18 @@ class InvestigationOrchestrator:
             github_token=self.config.github_token,
             discord_created_at_dt=discord_dt,
             timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
+        gaming_task = fetch_gaming_profiles(
+            username=username,
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
 
-        (sweep_res, github_res) = await asyncio.gather(
-            sweep_task, github_task, return_exceptions=True
+        (sweep_res, github_res, gaming_res) = await asyncio.gather(
+            sweep_task, github_task, gaming_task, return_exceptions=True
         )
 
         # Process Maigret sweep results
@@ -308,6 +321,12 @@ class InvestigationOrchestrator:
                     if email not in report.pivot_leads.discovered_emails:
                         report.pivot_leads.discovered_emails.append(email)
 
+        # Process Gaming pivot results
+        if isinstance(gaming_res, tuple) and len(gaming_res) == 2:
+            gaming_data, gaming_status = gaming_res
+            report.gaming = gaming_data
+            report.module_statuses.append(gaming_status)
+
         # 2. Automated Pivot into Breach Databases
         all_emails = list(set(report.pivot_leads.discovered_emails))
         if all_emails:
@@ -316,6 +335,7 @@ class InvestigationOrchestrator:
                 hibp_api_key=self.config.hibp_api_key,
                 leakcheck_api_key=self.config.leakcheck_api_key,
                 timeout=self.config.timeout,
+                proxy=self.config.proxy,
                 progress_callback=progress_callback,
             )
             report.breaches.extend(breaches)
@@ -344,6 +364,12 @@ class InvestigationOrchestrator:
         for em in new_leads.discovered_emails:
             if em not in target_leads.discovered_emails:
                 target_leads.discovered_emails.append(em)
+        for cr in new_leads.discovered_crypto:
+            if not any(existing.address.lower() == cr.address.lower() for existing in target_leads.discovered_crypto):
+                target_leads.discovered_crypto.append(cr)
+        for msg in new_leads.discovered_messaging:
+            if not any(existing.platform == msg.platform and existing.handle.lower() == msg.handle.lower() for existing in target_leads.discovered_messaging):
+                target_leads.discovered_messaging.append(msg)
         for n in new_leads.notes:
             if n not in target_leads.notes:
                 target_leads.notes.append(n)

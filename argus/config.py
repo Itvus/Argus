@@ -42,10 +42,19 @@ class Config:
     leakcheck_api_key: Optional[str]
     github_token: Optional[str]
     timeout: int = 15
+    proxy: Optional[str] = None
 
     @classmethod
-    def load(cls, timeout: int = 15) -> Config:
+    def load(cls, timeout: int = 15, proxy: Optional[str] = None) -> Config:
         _discover_and_load_env()
+        resolved_proxy = (
+            proxy
+            or os.getenv("ARGUS_PROXY")
+            or os.getenv("ALL_PROXY")
+            or os.getenv("HTTPS_PROXY")
+            or os.getenv("HTTP_PROXY")
+            or None
+        )
         return cls(
             discord_bot_token=os.getenv("DISCORD_BOT_TOKEN") or None,
             cordcat_api_key=os.getenv("CORDCAT_API_KEY") or None,
@@ -53,6 +62,7 @@ class Config:
             leakcheck_api_key=os.getenv("LEAKCHECK_API_KEY") or None,
             github_token=os.getenv("GITHUB_TOKEN") or None,
             timeout=timeout,
+            proxy=resolved_proxy,
         )
 
     def mask_key(self, key: Optional[str]) -> str:
@@ -65,5 +75,5 @@ class Config:
         return f"{clean[:4]}...{clean[-4:]}"
 
 
-def get_config(timeout: int = 15) -> Config:
-    return Config.load(timeout=timeout)
+def get_config(timeout: int = 15, proxy: Optional[str] = None) -> Config:
+    return Config.load(timeout=timeout, proxy=proxy)

@@ -103,9 +103,11 @@ flowchart LR
 | 🪟 **Windows Socket Patch** | ✅ Supported | Suppresses Proactor `WinError 10054` socket resets |
 | 📄 **JSON Export** | ✅ Supported | Structured Pydantic schema output via `--json` or `--out` |
 | 📑 **Self-Contained HTML Reports** | ✅ Supported | Standalone zero-dependency HTML export with `--html` and browser preview `--view` |
-| 💻 **Interactive Terminal UI (TUI)** | ⏳ Planned | Full interactive dashboard using Textual |
+| 🔄 **Proxy Support (Tor / SOCKS5 / HTTP)** | ✅ Supported | Configurable `--proxy` / `-x` flag or `ARGUS_PROXY` environment variable |
+| 🎮 **Gaming Ecosystem Pivots** | ✅ Supported | Mojang API Minecraft UUID/skin render and Steam Community XML profiling |
+| 🪙 **Precision Crypto & Messaging Leads** | ✅ Supported | BTC, ETH (with commit filter), SOL, Telegram, Matrix, and Signal extraction |
+| 💻 **Interactive Terminal UI (TUI)** | ✅ Supported | Menu-driven terminal report inspection via `argus tui` / `argus explore` |
 | ⚙️ **Custom Extraction Patterns** | ⏳ Planned | User-defined regex rules in `~/.argus/patterns/` |
-| 🔄 **Proxy Rotation (Tor / SOCKS5)** | ⏳ Planned | Configurable `--proxy` flag for egress rotation |
 
 ---
 
@@ -160,6 +162,9 @@ LEAKCHECK_API_KEY=your_leakcheck_key_here
 
 # GitHub Personal Access Token (increases rate limits to 5,000 req/hr)
 GITHUB_TOKEN=your_github_pat_here
+
+# Proxy URL (HTTP, HTTPS, or SOCKS5 / Tor)
+ARGUS_PROXY=socks5://127.0.0.1:9050
 ```
 
 Inspect active configuration anytime:
@@ -198,8 +203,24 @@ argus scan torvalds --html report.html
 # Open interactive HTML dossier in browser (creates temporary file if --html omitted)
 argus scan 155149108183695360 --pivot --view
 
+# Route requests through a SOCKS5 or Tor proxy
+argus scan torvalds --proxy socks5://127.0.0.1:9050
+
 # Pipe JSON directly into jq
 argus scan torvalds --json | jq .pivot_leads
+```
+
+### Interactive Terminal Dashboard (`argus tui` / `argus explore`)
+
+```powershell
+# Scan target and immediately open interactive TUI explorer
+argus tui torvalds
+
+# Open an existing investigation report in the interactive TUI
+argus tui --file report.json
+
+# Launch TUI explorer (prompts interactively if no file specified)
+argus explore
 ```
 
 ### Dedicated Snowflake Inspection (`argus snowflake`)

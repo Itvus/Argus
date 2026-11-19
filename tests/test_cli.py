@@ -68,3 +68,40 @@ def test_cli_man_command_roff():
     out = clean_output(result.stdout)
     assert ".TH ARGUS 1" in out
     assert ".SH NAME" in out
+
+
+def test_cli_proxy_flags_in_help():
+    scan_help = clean_output(runner.invoke(app, ["scan", "-h"]).stdout)
+    assert "--proxy" in scan_help
+    assert "-x" in scan_help
+
+    sf_help = clean_output(runner.invoke(app, ["snowflake", "-h"]).stdout)
+    assert "--proxy" in sf_help
+    assert "-x" in sf_help
+
+
+def test_cli_tui_help():
+    tui_help = clean_output(runner.invoke(app, ["tui", "-h"]).stdout)
+    assert "interactive" in tui_help.lower() or "explore" in tui_help.lower()
+
+    explore_help = clean_output(runner.invoke(app, ["explore", "-h"]).stdout)
+    assert "interactive" in explore_help.lower() or "explore" in explore_help.lower()
+
+
+def test_config_proxy_precedence(monkeypatch):
+    from argus.config import Config
+
+    # Explicit argument takes top priority
+    monkeypatch.setenv("ARGUS_PROXY", "socks5://127.0.0.1:9050")
+    cfg = Config.load(proxy="http://10.0.0.1:8080")
+    assert cfg.proxy == "http://10.0.0.1:8080"
+
+    # ARGUS_PROXY takes precedence over standard env vars
+    monkeypatch.setenv("HTTP_PROXY", "http://corporate-proxy:3128")
+    cfg2 = Config.load(proxy=None)
+    assert cfg2.proxy == "socks5://127.0.0.1:9050"
+
+    # Falls back to standard env vars when ARGUS_PROXY absent
+    monkeypatch.delenv("ARGUS_PROXY", raising=False)
+    cfg3 = Config.load(proxy=None)
+    assert cfg3.proxy == "http://corporate-proxy:3128"

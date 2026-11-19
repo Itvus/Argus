@@ -24,6 +24,7 @@ async def query_cordcat(
     user_id: str,
     api_key: Optional[str],
     timeout: int = 15,
+    proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Tuple[Optional[CordCatRecord], ModuleStatus]:
     """Query CordCat API v2 for historical usernames and FiveM identifiers with progress reporting."""
@@ -46,7 +47,7 @@ async def query_cordcat(
     }
     url = f"https://api.cord.cat/v2/query/{user_id}"
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         try:
             resp = await client.get(url, headers=headers)
             if progress_callback:
@@ -229,6 +230,7 @@ async def check_breaches(
     hibp_api_key: Optional[str] = None,
     leakcheck_api_key: Optional[str] = None,
     timeout: int = 15,
+    proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Tuple[list[BreachRecord], ModuleStatus]:
     """Check emails or usernames against configured breach notification providers with progress reporting."""
@@ -252,7 +254,7 @@ async def check_breaches(
     error_notes: list[str] = []
     total_q = len(queries)
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         for idx, q in enumerate(queries, start=1):
             service_label = "Have I Been Pwned" if (hibp_api_key and "@" in q) else "LeakCheck"
             if progress_callback:
@@ -285,6 +287,7 @@ async def fetch_github_pivot(
     github_token: Optional[str] = None,
     discord_created_at_dt: Optional[datetime] = None,
     timeout: int = 15,
+    proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> Tuple[Optional[GitHubPivotLead], ModuleStatus]:
     """Audit a GitHub profile and public commit events with live progress reporting."""
@@ -302,7 +305,7 @@ async def fetch_github_pivot(
     if progress_callback:
         progress_callback("GitHub Audit", 0, 2, f"Profile: https://github.com/{clean_username}")
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
         try:
             # 1. Fetch GitHub profile
             p_resp = await client.get(profile_url, headers=headers)

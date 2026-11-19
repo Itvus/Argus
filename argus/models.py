@@ -87,12 +87,55 @@ class GitHubPivotLead(BaseModel):
     age_comparison_discord: Optional[str] = None
 
 
+class CryptoLead(BaseModel):
+    """Discovered cryptocurrency wallet address."""
+    network: str  # "Bitcoin", "Ethereum", "Solana"
+    address: str
+
+
+class MessagingLead(BaseModel):
+    """Discovered messaging handle or link."""
+    platform: str  # "Telegram", "Matrix", "Signal"
+    handle: str
+    url: Optional[str] = None
+
+
+class MinecraftProfile(BaseModel):
+    """Minecraft account metadata resolved via Mojang API."""
+    username: str
+    uuid: str
+    uuid_formatted: str
+    skin_render_url: Optional[str] = None
+
+
+class SteamProfile(BaseModel):
+    """Steam account metadata resolved via Community XML."""
+    steam_id_64: str
+    custom_url: str
+    profile_url: str
+    real_name: Optional[str] = None
+    location: Optional[str] = None
+    avatar_url: Optional[str] = None
+    member_since: Optional[str] = None
+    vac_banned: bool = False
+    trade_ban_state: Optional[str] = None
+    online_state: Optional[str] = None
+
+
+class GamingProfiles(BaseModel):
+    """Aggregated gaming ecosystem profiles (Minecraft, Steam)."""
+    minecraft: Optional[MinecraftProfile] = None
+    steam: Optional[SteamProfile] = None
+
+
 class PivotLeads(BaseModel):
     """Aggregated investigative leads discovered during pivoting."""
     discovered_emails: list[str] = Field(default_factory=list)
     discovered_discord_ids: list[str] = Field(default_factory=list)
     discovered_discord_tags: list[str] = Field(default_factory=list)
     discovered_invites: list[str] = Field(default_factory=list)
+    discovered_crypto: list[CryptoLead] = Field(default_factory=list)
+    discovered_messaging: list[MessagingLead] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 
@@ -115,5 +158,6 @@ class InvestigationReport(BaseModel):
     cordcat: Optional[CordCatRecord] = None
     breaches: list[BreachRecord] = Field(default_factory=list)
     github_pivot: Optional[GitHubPivotLead] = None
+    gaming: Optional[GamingProfiles] = None
     pivot_leads: PivotLeads = Field(default_factory=PivotLeads)
     module_statuses: list[ModuleStatus] = Field(default_factory=list)
