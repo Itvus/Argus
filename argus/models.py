@@ -198,6 +198,81 @@ class GoogleDork(BaseModel):
     url: str
 
 
+class DomainReconRecord(BaseModel):
+    """Personal domain and infrastructure recon via RDAP and Certificate Transparency."""
+    domain: str
+    registrar: Optional[str] = None
+    created_date: Optional[str] = None
+    nameservers: list[str] = Field(default_factory=list)
+    subdomains: list[str] = Field(default_factory=list)
+
+
+class PackageRecord(BaseModel):
+    """Software package authorship record from PyPI, npm, or crates.io."""
+    registry: str  # "PyPI", "npm", "crates.io"
+    name: str
+    url: str
+    version: Optional[str] = None
+    description: Optional[str] = None
+    author_email: Optional[str] = None
+
+
+class WaybackSnapshot(BaseModel):
+    """Archived profile snapshot from Internet Archive Wayback Machine."""
+    original_url: str
+    archive_url: str
+    timestamp: str
+    status_code: str = "200"
+
+
+class PGPKeyRecord(BaseModel):
+    """OpenPGP public key record from keys.openpgp.org."""
+    source: str = "keys.openpgp.org"
+    key_id_or_fingerprint: str
+    identities: list[str] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    public_key_url: Optional[str] = None
+
+
+class KeybaseProof(BaseModel):
+    """Cryptographically verified identity proof from Keybase."""
+    service: str
+    username: str
+    proof_url: Optional[str] = None
+
+
+class KeybaseProfile(BaseModel):
+    """Keybase identity profile with verified external proofs."""
+    username: str
+    full_name: Optional[str] = None
+    bio: Optional[str] = None
+    proofs: list[KeybaseProof] = Field(default_factory=list)
+    crypto_addresses: list[dict[str, str]] = Field(default_factory=list)
+
+
+class CryptoLeadDetail(BaseModel):
+    """Cryptocurrency address with blockchain explorer reference."""
+    network: str  # "Ethereum", "Bitcoin", "Solana", "ENS"
+    address: str
+    explorer_url: str
+
+
+class ImageMetadataReport(BaseModel):
+    """Image EXIF and technical metadata report for avatars."""
+    platform: str
+    url: str
+    has_exif: bool = False
+    make: Optional[str] = None
+    model: Optional[str] = None
+    software: Optional[str] = None
+    datetime_original: Optional[str] = None
+    dimensions: Optional[str] = None
+    color_mode: Optional[str] = None
+    format: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    exif_tags: dict[str, str] = Field(default_factory=dict)
+
+
 class IntelXRecord(BaseModel):
     """Intelligence X selector search record."""
     system_id: str
@@ -251,5 +326,12 @@ class InvestigationReport(BaseModel):
     correlation: Optional[CorrelationScore] = None
     dorks: list[GoogleDork] = Field(default_factory=list)
     intelx: Optional[IntelXReport] = None
+    domain_recon: list[DomainReconRecord] = Field(default_factory=list)
+    packages: list[PackageRecord] = Field(default_factory=list)
+    wayback_snapshots: list[WaybackSnapshot] = Field(default_factory=list)
+    pgp_keys: list[PGPKeyRecord] = Field(default_factory=list)
+    keybase: Optional[KeybaseProfile] = None
+    crypto_details: list[CryptoLeadDetail] = Field(default_factory=list)
+    image_metadata: list[ImageMetadataReport] = Field(default_factory=list)
     pivot_leads: PivotLeads = Field(default_factory=PivotLeads)
     module_statuses: list[ModuleStatus] = Field(default_factory=list)

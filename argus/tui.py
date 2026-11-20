@@ -37,6 +37,18 @@ def display_overview_panel(report: InvestigationReport) -> None:
     if total_email_accs > 0:
         grid.add_row("Verified Email Accounts:", str(total_email_accs))
     grid.add_row("Crypto Wallet Addresses:", str(len(report.pivot_leads.discovered_crypto)))
+    if report.keybase:
+        grid.add_row("Keybase Identity:", f"[bold cyan]@{report.keybase.username}[/bold cyan] ({len(report.keybase.proofs)} proofs)")
+    if report.pgp_keys:
+        grid.add_row("OpenPGP Keys:", str(len(report.pgp_keys)))
+    if report.domain_recon:
+        grid.add_row("Personal Domains:", str(len(report.domain_recon)))
+    if report.packages:
+        grid.add_row("Authored Packages:", str(len(report.packages)))
+    if report.wayback_snapshots:
+        grid.add_row("Historical Snapshots:", str(len(report.wayback_snapshots)))
+    if report.image_metadata:
+        grid.add_row("Image Metadata Reports:", str(len(report.image_metadata)))
     grid.add_row("Messaging Handles:", str(len(report.pivot_leads.discovered_messaging)))
     grid.add_row("Breach Incidents:", str(len(report.breaches)))
     total_hr = sum(h.total_stealers for h in report.hudson_rock)
@@ -297,8 +309,62 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
             hr_tbl.add_row(inf.stealer_family or "Unknown", inf.date_compromised or "N/A", comp_os, logins)
         console.print(Panel(hr_tbl, title=f"[bold red]Hudson Rock Infostealer Malware Compromises ({len(hr_infections)})[/bold red]", border_style="red", box=box.ROUNDED))
 
-    if not report.cordcat and not report.breaches and not report.github_pivot and not report.hudson_rock:
-        console.print("[dim]No threat or transparency indexer hits recorded.[/dim]")
+    # 5. Keybase & OpenPGP
+    if report.keybase or report.pgp_keys:
+        kp_tbl = Table(box=box.SIMPLE, show_header=True)
+        kp_tbl.add_column("Source", style="bold cyan", width=18)
+        kp_tbl.add_column("Verified Identity & Keys", style="white")
+        if report.keybase:
+            kb = report.keybase
+            proofs_summary = ", ".join(f"{p.service}:{p.username}" for p in kb.proofs) if kb.proofs else "None"
+            kp_tbl.add_row("Keybase", f"@{kb.username} ({kb.full_name or 'N/A'})\nProofs: {proofs_summary}")
+        for pgp in report.pgp_keys:
+            kp_tbl.add_row("OpenPGP", f"{pgp.key_id_or_fingerprint} ({', '.join(pgp.identities)})")
+        console.print(Panel(kp_tbl, title="[bold cyan]Cryptographic Identities (Keybase & OpenPGP)[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+
+    # 6. Personal Domain Recon
+    if report.domain_recon:
+        dr_tbl = Table(box=box.SIMPLE, show_header=True)
+        dr_tbl.add_column("Domain", style="bold green", width=22)
+        dr_tbl.add_column("Registrar / Date", style="white", width=26)
+        dr_tbl.add_column("Subdomains (crt.sh)", style="cyan")
+        for d in report.domain_recon:
+            subs = ", ".join(d.subdomains[:6]) if d.subdomains else "None"
+            dr_tbl.add_row(d.domain, f"{d.registrar or 'N/A'}\n{d.created_date or 'N/A'}", subs)
+        console.print(Panel(dr_tbl, title=f"[bold green]Personal Domain & Infrastructure Recon ({len(report.domain_recon)})[/bold green]", border_style="green", box=box.ROUNDED))
+
+    # 7. Package Registries
+    if report.packages:
+        pkg_tbl = Table(box=box.SIMPLE, show_header=True)
+        pkg_tbl.add_column("Registry", style="bold magenta", width=12)
+        pkg_tbl.add_column("Package Name", style="bold white", width=20)
+        pkg_tbl.add_column("Author Email", style="green")
+        for pkg in report.packages:
+            pkg_tbl.add_row(pkg.registry, pkg.name, pkg.author_email or "N/A")
+        console.print(Panel(pkg_tbl, title=f"[bold magenta]Package Registry Footprint ({len(report.packages)})[/bold magenta]", border_style="magenta", box=box.ROUNDED))
+
+    # 8. Wayback Machine Snapshots
+    if report.wayback_snapshots:
+        wb_tbl = Table(box=box.SIMPLE, show_header=True)
+        wb_tbl.add_column("Timestamp", style="bold yellow", width=18)
+        wb_tbl.add_column("Target URL", style="white", width=35)
+        wb_tbl.add_column("Archive Snapshot", style="blue underline")
+        for snap in report.wayback_snapshots[:6]:
+            wb_tbl.add_row(snap.timestamp, snap.original_url, snap.archive_url)
+        console.print(Panel(wb_tbl, title=f"[bold yellow]Internet Archive Historical Snapshots ({len(report.wayback_snapshots)})[/bold yellow]", border_style="yellow", box=box.ROUNDED))
+
+    if (
+        not report.cordcat
+        and not report.breaches
+        and not report.github_pivot
+        and not report.hudson_rock
+        and not report.keybase
+        and not report.pgp_keys
+        and not report.domain_recon
+        and not report.packages
+        and not report.wayback_snapshots
+    ):
+        console.print("[dim]No threat, identity, or infrastructure indexer hits recorded.[/dim]")
 
 
 def display_diagnostics_panel(report: InvestigationReport) -> None:

@@ -697,6 +697,270 @@ def render_html_report(report: InvestigationReport) -> str:
         </div>
         """
 
+    # 11b. Cryptographic Identities (Keybase & OpenPGP)
+    keybase_pgp_html = ""
+    if report.keybase or report.pgp_keys:
+        kp_rows = []
+        if report.keybase:
+            kb = report.keybase
+            proof_links = " ".join(
+                f'<a href="{html.escape(p.proof_url or "")}" target="_blank" rel="noopener noreferrer" class="tag">{html.escape(p.service)}:{html.escape(p.username)}</a>'
+                for p in kb.proofs
+            ) if kb.proofs else '<span class="text-xs text-muted">None</span>'
+            kp_rows.append(
+                f"""
+                <tr>
+                  <td class="font-bold text-cyan">Keybase</td>
+                  <td class="font-mono">@{html.escape(kb.username)}</td>
+                  <td>{html.escape(kb.full_name or 'N/A')}</td>
+                  <td>{proof_links}</td>
+                </tr>
+                """
+            )
+        for pgp in report.pgp_keys:
+            kp_rows.append(
+                f"""
+                <tr>
+                  <td class="font-bold text-emerald">{html.escape(pgp.source)}</td>
+                  <td class="font-mono">{html.escape(pgp.key_id_or_fingerprint)}</td>
+                  <td>{html.escape(', '.join(pgp.identities))}</td>
+                  <td><a href="{html.escape(pgp.public_key_url or '')}" target="_blank" rel="noopener noreferrer" class="link-external">Public Key {ICON_LINK}</a></td>
+                </tr>
+                """
+            )
+        keybase_pgp_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Cryptographic Identities (Keybase & OpenPGP)</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Identifier / Key</th>
+                <th>Identity Claims</th>
+                <th>Verified External Proofs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {''.join(kp_rows)}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 11c. Personal Domain & Infrastructure Recon (RDAP + crt.sh)
+    domain_recon_html = ""
+    if report.domain_recon:
+        dr_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-bold text-emerald font-mono">{html.escape(d.domain)}</td>
+              <td>{html.escape(d.registrar or 'N/A')}</td>
+              <td class="font-mono text-xs">{html.escape(d.created_date or 'N/A')}</td>
+              <td class="font-mono text-xs">
+                {', '.join(html.escape(s) for s in d.subdomains[:10]) if d.subdomains else '<span class="text-muted">None in CT logs</span>'}
+                {f'<span class="text-muted"> (+{len(d.subdomains) - 10} more)</span>' if len(d.subdomains) > 10 else ''}
+              </td>
+            </tr>
+            """
+            for d in report.domain_recon
+        )
+        domain_recon_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Personal Domain Infrastructure Recon ({len(report.domain_recon)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Domain Name</th>
+                <th>Registrar</th>
+                <th>Registration Date</th>
+                <th>Discovered Subdomains (crt.sh)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dr_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 11d. Package Registry Developer Footprint
+    packages_html = ""
+    if report.packages:
+        pkg_rows = "".join(
+            f"""
+            <tr>
+              <td><span class="badge badge-cyan">{html.escape(pkg.registry)}</span></td>
+              <td class="font-bold"><a href="{html.escape(pkg.url)}" target="_blank" rel="noopener noreferrer" class="link-external">{html.escape(pkg.name)} {ICON_LINK}</a></td>
+              <td class="font-mono">{html.escape(pkg.version or 'N/A')}</td>
+              <td class="text-xs">{html.escape(pkg.description or 'No summary')}</td>
+              <td class="font-mono text-xs text-emerald">{html.escape(pkg.author_email or 'N/A')}</td>
+            </tr>
+            """
+            for pkg in report.packages
+        )
+        packages_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_TERMINAL} Package Registry Footprint ({len(report.packages)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Registry</th>
+                <th>Package</th>
+                <th>Version</th>
+                <th>Summary</th>
+                <th>Author Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pkg_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 11e. Wayback Machine Historical Snapshots
+    wayback_html = ""
+    if report.wayback_snapshots:
+        wb_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-mono">{html.escape(snap.timestamp)}</td>
+              <td class="font-mono text-xs">{html.escape(snap.original_url)}</td>
+              <td><a href="{html.escape(snap.archive_url)}" target="_blank" rel="noopener noreferrer" class="link-external font-bold">View Archive Snapshot {ICON_LINK}</a></td>
+            </tr>
+            """
+            for snap in report.wayback_snapshots[:12]
+        )
+        wayback_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_TERMINAL} Internet Archive Historical Snapshots ({len(report.wayback_snapshots)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Target Profile URL</th>
+                <th>Wayback Machine Archive</th>
+              </tr>
+            </thead>
+            <tbody>
+              {wb_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 11f. Avatar EXIF & Technical Metadata
+    image_metadata_html = ""
+    if report.image_metadata:
+        img_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-bold text-cyan">{html.escape(im.platform)}</td>
+              <td class="font-mono">{html.escape(im.format or 'Unknown')}</td>
+              <td class="font-mono">{html.escape(im.dimensions or 'Unknown')}</td>
+              <td>{html.escape(f"{im.make or ''} {im.model or ''}".strip() or 'N/A')}</td>
+              <td class="text-xs">{html.escape(im.software or 'N/A')}</td>
+              <td class="font-mono text-xs">{html.escape(im.datetime_original or 'N/A')}</td>
+              <td>{"<span class='badge badge-cyan'>EXIF Found</span>" if im.has_exif else "<span class='badge badge-amber'>Stripped</span>"}</td>
+            </tr>
+            """
+            for im in report.image_metadata
+        )
+        image_metadata_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Avatar EXIF & Technical Metadata ({len(report.image_metadata)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Platform</th>
+                <th>Format</th>
+                <th>Dimensions</th>
+                <th>Camera Make/Model</th>
+                <th>Software Signature</th>
+                <th>DateTime Original</th>
+                <th>EXIF Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {img_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 11g. Interactive Entity Relationship Graph Data
+    graph_nodes = [{"id": "target", "label": report.target, "sub": report.target_type.upper(), "type": "target", "color": "#10b981", "radius": 18}]
+    graph_edges = []
+
+    for idx, sp in enumerate(report.social_profiles[:15]):
+        nid = f"p_{idx}"
+        graph_nodes.append({"id": nid, "label": sp.platform, "sub": sp.url, "type": "platform", "color": "#06b6d4", "radius": 10})
+        graph_edges.append({"source": "target", "target": nid})
+
+    for idx, em in enumerate(report.pivot_leads.discovered_emails):
+        nid = f"e_{idx}"
+        graph_nodes.append({"id": nid, "label": em, "sub": "Email", "type": "email", "color": "#f59e0b", "radius": 12})
+        graph_edges.append({"source": "target", "target": nid})
+        for b_idx, br in enumerate(report.breaches):
+            if br.query.lower() == em.lower():
+                bid = f"b_{idx}_{b_idx}"
+                graph_nodes.append({"id": bid, "label": br.service_name, "sub": "Breach", "type": "breach", "color": "#f43f5e", "radius": 8})
+                graph_edges.append({"source": nid, "target": bid})
+
+    for idx, d in enumerate(report.domain_recon):
+        nid = f"d_{idx}"
+        graph_nodes.append({"id": nid, "label": d.domain, "sub": f"{len(d.subdomains)} subdomains", "type": "domain", "color": "#14b8a6", "radius": 11})
+        graph_edges.append({"source": "target", "target": nid})
+
+    for idx, pkg in enumerate(report.packages):
+        nid = f"pkg_{idx}"
+        graph_nodes.append({"id": nid, "label": f"{pkg.registry}:{pkg.name}", "sub": pkg.version or "", "type": "package", "color": "#a855f7", "radius": 9})
+        graph_edges.append({"source": "target", "target": nid})
+
+    if report.keybase:
+        graph_nodes.append({"id": "keybase", "label": f"Keybase:@{report.keybase.username}", "sub": f"{len(report.keybase.proofs)} proofs", "type": "identity", "color": "#38bdf8", "radius": 12})
+        graph_edges.append({"source": "target", "target": "keybase"})
+
+    for idx, cl in enumerate(report.pivot_leads.discovered_crypto):
+        nid = f"c_{idx}"
+        graph_nodes.append({"id": nid, "label": f"{cl.network}:{cl.address[:8]}...", "sub": cl.network, "type": "crypto", "color": "#ec4899", "radius": 9})
+        graph_edges.append({"source": "target", "target": nid})
+
+    graph_payload_json = json.dumps({"nodes": graph_nodes, "edges": graph_edges})
+
+    graph_html = f"""
+    <div class="panel" id="graphContainerPanel">
+      <div class="panel-header" style="justify-content: space-between;">
+        <span class="panel-title">{ICON_SHIELD} Interactive Entity Correlation Graph</span>
+        <button class="btn" style="padding: 2px 8px; font-size: 11px;" onclick="resetGraphView()">Reset Graph</button>
+      </div>
+      <div style="position: relative; width: 100%; height: 420px; background: #0c0d0e; border-bottom: 1px solid var(--border-subtle); overflow: hidden;">
+        <canvas id="entityCanvas" width="940" height="420" style="display: block; width: 100%; height: 100%; cursor: grab;"></canvas>
+        <div id="graphTooltip" style="position: absolute; display: none; background: #1a1d20; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 11px; font-family: var(--font-mono); border: 1px solid var(--border-hover); pointer-events: none; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"></div>
+      </div>
+      <div style="padding: 8px 16px; font-size: 11px; color: var(--text-muted); display: flex; gap: 16px; flex-wrap: wrap;">
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; margin-right:4px;"></span>Target</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#06b6d4; margin-right:4px;"></span>Profiles</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f59e0b; margin-right:4px;"></span>Emails</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f43f5e; margin-right:4px;"></span>Breaches</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#14b8a6; margin-right:4px;"></span>Domains</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#a855f7; margin-right:4px;"></span>Packages</span>
+        <span><span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ec4899; margin-right:4px;"></span>Crypto</span>
+        <span style="margin-left: auto;">Drag nodes • Hover for details</span>
+      </div>
+    </div>
+    """
+
     # 12. Raw JSON representation
     raw_json_str = html.escape(json.dumps(report.model_dump(), indent=2))
 
@@ -1321,11 +1585,17 @@ def render_html_report(report: InvestigationReport) -> str:
 
     <!-- Main Content Flow -->
     {correlation_banner_html}
+    {graph_html}
     {snowflake_html}
     {profile_html}
+    {keybase_pgp_html}
     {gaming_html}
     {social_profiles_html}
     {avatar_matches_html}
+    {image_metadata_html}
+    {domain_recon_html}
+    {packages_html}
+    {wayback_html}
     {leads_html}
     {enrichment_html}
     {hudson_rock_html}
@@ -1389,6 +1659,198 @@ def render_html_report(report: InvestigationReport) -> str:
         toast.style.opacity = "0";
       }}, 1200);
     }}
+
+    // Interactive Entity Force Graph
+    (function initGraph() {{
+      const graphData = {graph_payload_json};
+      const canvas = document.getElementById("entityCanvas");
+      if (!canvas || !graphData || !graphData.nodes || graphData.nodes.length === 0) return;
+      const ctx = canvas.getContext("2d");
+      const tooltip = document.getElementById("graphTooltip");
+
+      const width = canvas.width;
+      const height = canvas.height;
+      const nodes = graphData.nodes;
+      const edges = graphData.edges;
+
+      nodes.forEach((n, i) => {{
+        if (n.id === "target") {{
+          n.x = width / 2;
+          n.y = height / 2;
+          n.vx = 0; n.vy = 0;
+        }} else {{
+          const angle = (i / (nodes.length - 1)) * 2 * Math.PI;
+          const dist = 120 + (i % 3) * 40;
+          n.x = width / 2 + Math.cos(angle) * dist;
+          n.y = height / 2 + Math.sin(angle) * dist;
+          n.vx = 0; n.vy = 0;
+        }}
+      }});
+
+      const nodeMap = {{}};
+      nodes.forEach(n => nodeMap[n.id] = n);
+
+      let isDragging = false;
+      let draggedNode = null;
+      let hoveredNode = null;
+
+      function simulate() {{
+        for (let i = 0; i < nodes.length; i++) {{
+          for (let j = i + 1; j < nodes.length; j++) {{
+            const na = nodes[i];
+            const nb = nodes[j];
+            const dx = nb.x - na.x;
+            const dy = nb.y - na.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            if (dist < 180) {{
+              const force = (180 - dist) / 180 * 0.4;
+              const fx = (dx / dist) * force;
+              const fy = (dy / dist) * force;
+              if (na !== draggedNode && na.id !== "target") {{ na.vx -= fx; na.vy -= fy; }}
+              if (nb !== draggedNode && nb.id !== "target") {{ nb.vx += fx; nb.vy += fy; }}
+            }}
+          }}
+        }}
+
+        edges.forEach(e => {{
+          const src = nodeMap[e.source];
+          const tgt = nodeMap[e.target];
+          if (src && tgt) {{
+            const dx = tgt.x - src.x;
+            const dy = tgt.y - src.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const targetDist = 110;
+            const force = (dist - targetDist) * 0.02;
+            const fx = (dx / dist) * force;
+            const fy = (dy / dist) * force;
+            if (src !== draggedNode && src.id !== "target") {{ src.vx += fx; src.vy += fy; }}
+            if (tgt !== draggedNode && tgt.id !== "target") {{ tgt.vx -= fx; tgt.vy -= fy; }}
+          }}
+        }});
+
+        nodes.forEach(n => {{
+          if (n !== draggedNode && n.id !== "target") {{
+            n.vx += (width / 2 - n.x) * 0.001;
+            n.vy += (height / 2 - n.y) * 0.001;
+            n.vx *= 0.85;
+            n.vy *= 0.85;
+            n.x += n.vx;
+            n.y += n.vy;
+            n.x = Math.max(n.radius + 10, Math.min(width - n.radius - 10, n.x));
+            n.y = Math.max(n.radius + 10, Math.min(height - n.radius - 10, n.y));
+          }}
+        }});
+      }}
+
+      function render() {{
+        ctx.clearRect(0, 0, width, height);
+
+        ctx.strokeStyle = "#24282c";
+        ctx.lineWidth = 1;
+        edges.forEach(e => {{
+          const src = nodeMap[e.source];
+          const tgt = nodeMap[e.target];
+          if (src && tgt) {{
+            ctx.beginPath();
+            ctx.moveTo(src.x, src.y);
+            ctx.lineTo(tgt.x, tgt.y);
+            ctx.stroke();
+          }}
+        }});
+
+        nodes.forEach(n => {{
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+          ctx.fillStyle = n.color;
+          ctx.fill();
+          ctx.lineWidth = n === hoveredNode || n === draggedNode ? 3 : 1;
+          ctx.strokeStyle = n === hoveredNode ? "#ffffff" : "#141618";
+          ctx.stroke();
+
+          ctx.font = n.id === "target" ? "bold 11px monospace" : "9px monospace";
+          ctx.fillStyle = "#e6edf3";
+          ctx.textAlign = "center";
+          const shortLabel = n.label.length > 16 ? n.label.slice(0, 14) + "..." : n.label;
+          ctx.fillText(shortLabel, n.x, n.y + n.radius + 12);
+        }});
+      }}
+
+      function loop() {{
+        simulate();
+        render();
+        requestAnimationFrame(loop);
+      }}
+      loop();
+
+      function getNodeAt(x, y) {{
+        for (let i = nodes.length - 1; i >= 0; i--) {{
+          const n = nodes[i];
+          const dx = x - n.x;
+          const dy = y - n.y;
+          if (dx * dx + dy * dy <= n.radius * n.radius + 25) {{
+            return n;
+          }}
+        }}
+        return null;
+      }}
+
+      function getCanvasPos(e) {{
+        const rect = canvas.getBoundingClientRect();
+        return {{
+          x: (e.clientX - rect.left) * (canvas.width / rect.width),
+          y: (e.clientY - rect.top) * (canvas.height / rect.height)
+        }};
+      }}
+
+      canvas.addEventListener("mousedown", e => {{
+        const pos = getCanvasPos(e);
+        const hit = getNodeAt(pos.x, pos.y);
+        if (hit) {{
+          isDragging = true;
+          draggedNode = hit;
+          canvas.style.cursor = "grabbing";
+        }}
+      }});
+
+      window.addEventListener("mouseup", () => {{
+        isDragging = false;
+        draggedNode = null;
+        canvas.style.cursor = "grab";
+      }});
+
+      canvas.addEventListener("mousemove", e => {{
+        const pos = getCanvasPos(e);
+        if (isDragging && draggedNode) {{
+          draggedNode.x = pos.x;
+          draggedNode.y = pos.y;
+        }} else {{
+          const hit = getNodeAt(pos.x, pos.y);
+          hoveredNode = hit;
+          if (hit && tooltip) {{
+            tooltip.style.display = "block";
+            tooltip.style.left = (e.clientX - canvas.getBoundingClientRect().left + 15) + "px";
+            tooltip.style.top = (e.clientY - canvas.getBoundingClientRect().top + 15) + "px";
+            tooltip.innerHTML = "<strong>" + hit.label + "</strong><br><span style='color:#94a3b8'>" + (hit.sub || hit.type) + "</span>";
+          }} else if (tooltip) {{
+            tooltip.style.display = "none";
+          }}
+        }}
+      }});
+
+      window.resetGraphView = function() {{
+        nodes.forEach((n, i) => {{
+          if (n.id === "target") {{
+            n.x = width / 2; n.y = height / 2;
+          }} else {{
+            const angle = (i / (nodes.length - 1)) * 2 * Math.PI;
+            const dist = 120 + (i % 3) * 40;
+            n.x = width / 2 + Math.cos(angle) * dist;
+            n.y = height / 2 + Math.sin(angle) * dist;
+          }}
+          n.vx = 0; n.vy = 0;
+        }});
+      }};
+    }})();
   </script>
 </body>
 </html>

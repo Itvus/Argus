@@ -48,6 +48,8 @@ def test_cli_subcommand_help_short():
     out = clean_output(result.stdout)
     assert "--pivot" in out
     assert "--all-sites" in out
+    assert "--metadata" in out or "-M" in out
+    assert "--dorks" in out or "-D" in out
 
 
 def test_cli_man_command_interactive():

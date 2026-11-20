@@ -506,6 +506,132 @@ def render_report_rich(report: InvestigationReport) -> None:
             )
         )
 
+    # 7g. Keybase & OpenPGP Cryptographic Identity
+    if report.keybase or report.pgp_keys:
+        crypto_id_table = Table(box=box.SIMPLE, show_header=True)
+        crypto_id_table.add_column("Source", style="bold cyan", width=18)
+        crypto_id_table.add_column("Verified Identity & Claims", style="white")
+
+        if report.keybase:
+            kb = report.keybase
+            kb_lines = [f"Username: @{kb.username}"]
+            if kb.full_name:
+                kb_lines.append(f"Full Name: {kb.full_name}")
+            if kb.bio:
+                kb_lines.append(f"Bio: {kb.bio}")
+            for proof in kb.proofs:
+                kb_lines.append(f"• Proof: [{proof.service}] {proof.username} ({proof.proof_url or 'Verified'})")
+            for c_addr in kb.crypto_addresses:
+                kb_lines.append(f"• Wallet: [{c_addr.get('network', 'crypto')}] {c_addr.get('address')}")
+            crypto_id_table.add_row("Keybase", "\n".join(kb_lines))
+
+        for pgp in report.pgp_keys:
+            identities_str = ", ".join(pgp.identities) if pgp.identities else "Unspecified"
+            crypto_id_table.add_row("OpenPGP", f"{pgp.key_id_or_fingerprint}\nIdentities: {identities_str}\n[dim underline]{pgp.public_key_url or ''}[/dim underline]")
+
+        console.print(
+            Panel(
+                crypto_id_table,
+                title="[bold cyan]Cryptographic Identities (Keybase & OpenPGP)[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7h. Personal Domain Recon & Infrastructure (RDAP + crt.sh)
+    if report.domain_recon:
+        domain_table = Table(box=box.SIMPLE, show_header=True)
+        domain_table.add_column("Domain", style="bold green", width=22)
+        domain_table.add_column("Registrar / Created", style="white", width=26)
+        domain_table.add_column("Discovered Subdomains (crt.sh)", style="cyan")
+
+        for d in report.domain_recon:
+            meta_str = f"Registrar: {d.registrar or 'N/A'}\nCreated: {d.created_date or 'N/A'}"
+            subs_str = ", ".join(d.subdomains[:8]) if d.subdomains else "[dim]No subdomains in CT logs[/dim]"
+            if len(d.subdomains) > 8:
+                subs_str += f" (+{len(d.subdomains) - 8} more)"
+            domain_table.add_row(d.domain, meta_str, subs_str)
+
+        console.print(
+            Panel(
+                domain_table,
+                title=f"[bold green]Personal Domain & Infrastructure Recon ({len(report.domain_recon)})[/bold green]",
+                border_style="green",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7i. Package Registries Footprint
+    if report.packages:
+        pkg_table = Table(box=box.SIMPLE, show_header=True)
+        pkg_table.add_column("Registry", style="bold magenta", width=12)
+        pkg_table.add_column("Package Name", style="bold white", width=20)
+        pkg_table.add_column("Version", style="yellow", width=10)
+        pkg_table.add_column("Description / Author Email", style="white")
+
+        for pkg in report.packages:
+            desc = pkg.description or "[dim]No description[/dim]"
+            if pkg.author_email:
+                desc += f"\n[bold green]Author Email:[/bold green] {pkg.author_email}"
+            pkg_table.add_row(pkg.registry, pkg.name, pkg.version or "N/A", desc)
+
+        console.print(
+            Panel(
+                pkg_table,
+                title=f"[bold magenta]Package Registry Footprint (PyPI / npm / crates.io) ({len(report.packages)})[/bold magenta]",
+                border_style="magenta",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7j. Wayback Machine Historical Snapshots
+    if report.wayback_snapshots:
+        wb_table = Table(box=box.SIMPLE, show_header=True)
+        wb_table.add_column("Timestamp (UTC)", style="bold yellow", width=18)
+        wb_table.add_column("Target URL", style="white", width=35)
+        wb_table.add_column("Internet Archive Wayback Snapshot", style="blue underline")
+
+        for snap in report.wayback_snapshots[:8]:
+            wb_table.add_row(snap.timestamp, snap.original_url, snap.archive_url)
+
+        console.print(
+            Panel(
+                wb_table,
+                title=f"[bold yellow]Internet Archive Historical Snapshots ({len(report.wayback_snapshots)})[/bold yellow]",
+                border_style="yellow",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7k. Image EXIF & Technical Metadata
+    if report.image_metadata:
+        img_table = Table(box=box.SIMPLE, show_header=True)
+        img_table.add_column("Platform", style="bold cyan", width=18)
+        img_table.add_column("Format & Size", style="white", width=20)
+        img_table.add_column("EXIF Camera / Software", style="yellow")
+
+        for img in report.image_metadata:
+            size_kb = f"{img.file_size_bytes // 1024} KB" if img.file_size_bytes else "N/A"
+            tech = f"{img.format} ({img.dimensions})\nMode: {img.color_mode} | Size: {size_kb}"
+            exif_desc = []
+            if img.make or img.model:
+                exif_desc.append(f"Camera: {img.make or ''} {img.model or ''}".strip())
+            if img.software:
+                exif_desc.append(f"Software: {img.software}")
+            if img.datetime_original:
+                exif_desc.append(f"Date: {img.datetime_original}")
+            desc_str = "\n".join(exif_desc) if exif_desc else "[dim]Stripped (No EXIF)[/dim]"
+            img_table.add_row(img.platform, tech, desc_str)
+
+        console.print(
+            Panel(
+                img_table,
+                title=f"[bold cyan]Avatar EXIF & Technical Image Metadata ({len(report.image_metadata)})[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
+
     # 8. Aggregated Pivot Leads
     leads = report.pivot_leads
     has_leads = (
@@ -604,6 +730,12 @@ def scan_command(
         "--intelx",
         help="Query Intelligence X darknet archives and public data leaks.",
     ),
+    metadata: bool = typer.Option(
+        False,
+        "--metadata",
+        "-M",
+        help="Inspect avatar image EXIF metadata and technical properties.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -657,6 +789,7 @@ def scan_command(
                 email_sites=email_sites,
                 dorks=dorks,
                 intelx=intelx,
+                metadata=metadata,
                 progress_callback=None,
             )
         )
@@ -672,6 +805,7 @@ def scan_command(
                 email_sites=email_sites,
                 dorks=dorks,
                 intelx=intelx,
+                metadata=metadata,
                 progress_callback=cb,
             )
 
@@ -900,6 +1034,12 @@ def tui_command(
         "--intelx",
         help="Query Intelligence X darknet archives and public data leaks.",
     ),
+    metadata: bool = typer.Option(
+        False,
+        "--metadata",
+        "-M",
+        help="Inspect avatar image EXIF metadata and technical properties.",
+    ),
     proxy: Optional[str] = typer.Option(
         None,
         "--proxy",
@@ -951,6 +1091,7 @@ def tui_command(
                 email_sites=email_sites,
                 dorks=dorks,
                 intelx=intelx,
+                metadata=metadata,
                 progress_callback=cb,
             )
 
@@ -1043,6 +1184,7 @@ def man_command(
     opt_table.add_row("-E, --email-sites", "Check account registrations on all 120+ platforms for discovered emails via Holehe.")
     opt_table.add_row("-D, --dorks", "Generate pre-computed Google Dork URLs targeting pastes, leaks, and docs.")
     opt_table.add_row("--intelx", "Query Intelligence X darknet archives and public data leaks.")
+    opt_table.add_row("-M, --metadata", "Inspect avatar image EXIF metadata, camera specifications, and technical properties.")
     opt_table.add_row("-j, --json", "Output raw formatted JSON to stdout for pipelines or jq.")
     opt_table.add_row("-o, --out <PATH>", "Save structured JSON investigation report to file.")
     opt_table.add_row("-H, --html <PATH>", "Save standalone HTML investigation report to file.")

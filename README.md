@@ -109,6 +109,12 @@ flowchart LR
 | 🛡️ **Hudson Rock Infostealer Intel** | ✅ Supported | Unauthenticated infostealer malware infection & stolen credential analysis |
 | 🖼️ **Cross-Platform Avatar Hashing** | ✅ Supported | 64-bit dHash perceptual matching with Hamming distance visual correlation |
 | 🎯 **Algorithmic Confidence Scoring** | ✅ Supported | Objective 0–100% target correlation score based on multi-vector evidence |
+| 🌐 **Personal Domain Recon & crt.sh** | ✅ Supported | RDAP registrar records and Certificate Transparency subdomain discovery |
+| 📦 **Package Registry Footprint** | ✅ Supported | Published package authoring checks across PyPI, npm, and crates.io |
+| 🏛️ **Wayback Machine Snapshots** | ✅ Supported | Historical profile snapshot archiving via Internet Archive CDX API |
+| 🔑 **Keybase & OpenPGP Verification** | ✅ Supported | Cryptographic proofs and public keys via Keybase & keys.openpgp.org |
+| 🕸️ **Interactive D3 Force Graph** | ✅ Supported | Offline zero-dependency physics relationship graph in HTML Dossier |
+| 📷 **Avatar EXIF & Metadata** | ✅ Supported | Opt-in `--metadata` / `-M` flag inspecting dimensions, camera, and EXIF tags |
 | 📧 **Email Account Probing (Holehe)** | ✅ Supported | Opt-in `--email-sites` / `-E` flag checking 120+ platforms for registered accounts |
 | 🔍 **Pre-Computed Google Dorks** | ✅ Supported | Opt-in `--dorks` / `-D` flag generating targeted web/paste/leak search URLs |
 | 🌐 **Intelligence X Darknet Search** | ✅ Supported | Opt-in `--intelx` flag for public paste and darknet archive hits |

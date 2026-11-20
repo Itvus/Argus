@@ -20,15 +20,21 @@ from argus.models import (
 )
 from argus.modules.avatar_hash import fetch_and_hash_avatars
 from argus.modules.correlation import calculate_correlation_score
+from argus.modules.crypto_pivot import extract_crypto_wallets
 from argus.modules.discord_api import fetch_discord_profile
+from argus.modules.domain_recon import extract_custom_domains, recon_domain
 from argus.modules.dorks import generate_google_dorks
 from argus.modules.email_recon import check_email_registrations
 from argus.modules.enrichment import check_breaches, fetch_github_pivot, query_cordcat
 from argus.modules.gaming import fetch_gaming_profiles
 from argus.modules.hudson_rock import fetch_hudson_rock_intel
 from argus.modules.intelx import query_intelx
+from argus.modules.metadata_exif import inspect_avatar_metadata
+from argus.modules.package_registries import fetch_package_registries
+from argus.modules.pgp_keybase import lookup_keybase, lookup_openpgp_keys
 from argus.modules.snowflake import decode_snowflake, is_valid_snowflake
 from argus.modules.username_pivot import run_username_pivot
+from argus.modules.wayback import fetch_wayback_snapshots
 
 # Callback: (phase_title, completed_count, total_count, current_service_description)
 ProgressCallback = Callable[[str, int, int, str], None]
@@ -48,6 +54,7 @@ class InvestigationOrchestrator:
         email_sites: bool = False,
         dorks: bool = False,
         intelx: bool = False,
+        metadata: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> InvestigationReport:
         """Run complete investigation on target (Snowflake ID, username, or email)."""
@@ -116,6 +123,55 @@ class InvestigationOrchestrator:
             )
             report.avatar_hashes.extend(hashes)
             report.avatar_matches.extend(matches)
+
+        # -------------------------------------------------------------
+        # Crypto Ecosystem Extraction & Block Explorer References
+        # -------------------------------------------------------------
+        text_corpus: list[str] = list(report.pivot_leads.notes)
+        if report.github_pivot and report.github_pivot.bio:
+            text_corpus.append(report.github_pivot.bio)
+        if report.keybase and report.keybase.bio:
+            text_corpus.append(report.keybase.bio)
+        for p in report.social_profiles:
+            if "bio" in p.extracted_data:
+                text_corpus.append(str(p.extracted_data["bio"]))
+        crypto_details, crypto_leads = extract_crypto_wallets(text_corpus)
+        report.crypto_details = crypto_details
+        for cl in crypto_leads:
+            if not any(existing.address.lower() == cl.address.lower() for existing in report.pivot_leads.discovered_crypto):
+                report.pivot_leads.discovered_crypto.append(cl)
+
+        # -------------------------------------------------------------
+        # Wayback Machine / CDX Historical Snapshots
+        # -------------------------------------------------------------
+        profile_urls: list[str] = []
+        if report.github_pivot and report.github_pivot.profile_url:
+            profile_urls.append(report.github_pivot.profile_url)
+        for sp in report.social_profiles:
+            if sp.status == "Claimed" and sp.url not in profile_urls:
+                profile_urls.append(sp.url)
+        if profile_urls:
+            wb_snaps, wb_status = await fetch_wayback_snapshots(
+                urls=profile_urls,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            report.wayback_snapshots.extend(wb_snaps)
+            report.module_statuses.append(wb_status)
+
+        # -------------------------------------------------------------
+        # Image Technical & EXIF Metadata Inspection (--metadata / -M)
+        # -------------------------------------------------------------
+        if metadata and avatar_sources:
+            img_reports, img_status = await inspect_avatar_metadata(
+                avatar_sources=avatar_sources,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            report.image_metadata.extend(img_reports)
+            report.module_statuses.append(img_status)
 
         # -------------------------------------------------------------
         # S-Tier Base 3: Algorithmic Correlation & Confidence Scoring
@@ -379,9 +435,21 @@ class InvestigationOrchestrator:
             proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
+        keybase_task = lookup_keybase(
+            username=username,
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
+        package_task = fetch_package_registries(
+            username=username,
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
 
-        (sweep_res, github_res, gaming_res, hudson_res) = await asyncio.gather(
-            sweep_task, github_task, gaming_task, hudson_task, return_exceptions=True
+        (sweep_res, github_res, gaming_res, hudson_res, keybase_res, package_res) = await asyncio.gather(
+            sweep_task, github_task, gaming_task, hudson_task, keybase_task, package_task, return_exceptions=True
         )
 
         # Process Maigret sweep results
@@ -420,6 +488,19 @@ class InvestigationOrchestrator:
                 report.hudson_rock.append(hr_data)
             report.module_statuses.append(hr_status)
 
+        # Process Keybase identity results
+        if isinstance(keybase_res, tuple) and len(keybase_res) == 2:
+            kb_prof, kb_stat = keybase_res
+            if kb_prof:
+                report.keybase = kb_prof
+            report.module_statuses.append(kb_stat)
+
+        # Process Package Registries results
+        if isinstance(package_res, tuple) and len(package_res) == 2:
+            pkgs, pkg_stat = package_res
+            report.packages.extend(pkgs)
+            report.module_statuses.append(pkg_stat)
+
         # 2. Automated Pivot into Breach Databases & Infostealer Intelligence
         all_emails = list(set(report.pivot_leads.discovered_emails))
         if all_emails:
@@ -446,6 +527,29 @@ class InvestigationOrchestrator:
                 if em_hr_data and em_hr_data.total_stealers > 0:
                     report.hudson_rock.append(em_hr_data)
                 report.module_statuses.append(em_hr_status)
+
+            # Query OpenPGP key servers
+            pgp_records, pgp_status = await lookup_openpgp_keys(
+                emails=all_emails,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            report.pgp_keys.extend(pgp_records)
+            report.module_statuses.append(pgp_status)
+
+            # Custom domain infrastructure reconnaissance (RDAP + crt.sh)
+            custom_domains = extract_custom_domains(all_emails)
+            for c_dom in custom_domains:
+                d_rec, d_stat = await recon_domain(
+                    domain=c_dom,
+                    timeout=self.config.timeout,
+                    proxy=self.config.proxy,
+                    progress_callback=progress_callback,
+                )
+                if d_rec:
+                    report.domain_recon.append(d_rec)
+                report.module_statuses.append(d_stat)
         else:
             report.module_statuses.append(
                 ModuleStatus(

@@ -80,6 +80,26 @@ def calculate_correlation_score(report: InvestigationReport) -> CorrelationScore
         score += 10
         reasons.append(f"Gaming ecosystem: Exact handle resolved on {' & '.join(platforms)}")
 
+    # 9. Keybase Verified Identity Proofs
+    if report.keybase and report.keybase.proofs:
+        score += 20
+        reasons.append(f"Cryptographic proof: Keybase confirmed {len(report.keybase.proofs)} linked identity proofs")
+
+    # 10. OpenPGP Key Server Registration
+    if report.pgp_keys:
+        score += 15
+        reasons.append(f"Cryptographic identity: Published OpenPGP public key found on keys.openpgp.org")
+
+    # 11. Package Authorship
+    if report.packages:
+        score += 10
+        reasons.append(f"Developer attribution: Authored {len(report.packages)} software package(s) on PyPI/npm/crates.io")
+
+    # 12. Personal Domain & Infrastructure
+    if report.domain_recon:
+        score += 10
+        reasons.append(f"Infrastructure ownership: Custom domain verified via RDAP/crt.sh")
+
     # Baseline presence
     if not reasons:
         score = 15
