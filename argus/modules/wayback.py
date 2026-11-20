@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import urllib.parse
 from typing import Callable, Optional
 import httpx
 
@@ -43,9 +44,10 @@ async def fetch_wayback_snapshots(
             if progress_callback:
                 progress_callback("Wayback Snapshots", idx, len(candidate_urls), f"Checking {target_url}")
             try:
+                encoded_target = urllib.parse.quote(target_url, safe="")
                 cdx_url = (
-                    f"http://web.archive.org/cdx/search/cdx"
-                    f"?url={target_url}&output=json&limit=3&fl=timestamp,original,statuscode&filter=statuscode:200"
+                    f"https://web.archive.org/cdx/search/cdx"
+                    f"?url={encoded_target}&output=json&limit=3&fl=timestamp,original,statuscode&filter=statuscode:200"
                 )
                 resp = await client.get(cdx_url)
                 if resp.status_code == 200:

@@ -118,3 +118,51 @@ def test_config_proxy_precedence(monkeypatch):
     monkeypatch.delenv("ARGUS_PROXY", raising=False)
     cfg3 = Config.load(proxy=None)
     assert cfg3.proxy == "http://corporate-proxy:3128"
+
+
+def test_render_report_rich_hostile_markup():
+    from argus.cli import render_report_rich
+    from argus.models import (
+        BreachRecord,
+        DiscordProfile,
+        GitHubPivotLead,
+        InvestigationReport,
+        SocialProfile,
+    )
+
+    report = InvestigationReport(
+        target="victim[/]test",
+        target_type="username",
+        scan_timestamp_utc="2026-11-20T17:00:00Z",
+        scan_duration_seconds=1.2,
+        breaches=[
+            BreachRecord(
+                query="a@b.c",
+                service_name="Ex[/]ploit",
+                data_classes=["passwords[/]", "emails[test]"],
+            )
+        ],
+        github_pivot=GitHubPivotLead(
+            username="u",
+            profile_url="https://github.com/u",
+            name="Hostile[/]Name",
+            company="[evil]corp[/]",
+            bio="[malicious]tag[/] in bio",
+        ),
+        discord_profile=DiscordProfile(
+            id="155149108183695360",
+            username="hostile_user",
+            global_name="[bad]global[/]",
+            bio="bio with [closing] [/] tags",
+        ),
+        social_profiles=[
+            SocialProfile(
+                platform="Bad[/]Platform",
+                url="https://bad.com/u[/]",
+                status="Claimed[/]",
+            )
+        ],
+    )
+
+    # Must execute and render without raising rich.errors.MarkupError
+    render_report_rich(report)

@@ -26,7 +26,7 @@ async def test_query_intelx_success():
     mock_client.__aenter__.return_value = mock_client
 
     with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client):
-        report, status = await query_intelx("target_email@example.com")
+        report, status = await query_intelx("target_email@example.com", api_key="mock_key")
 
     assert report is not None
     assert report.total_results == 2
@@ -45,8 +45,16 @@ async def test_query_intelx_rate_limit():
     mock_client.__aenter__.return_value = mock_client
 
     with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client):
-        report, status = await query_intelx("some_user")
+        report, status = await query_intelx("some_user", api_key="mock_key")
 
     assert report is None
     assert status.status == "skipped"
     assert "429" in status.message
+
+
+@pytest.mark.asyncio
+async def test_query_intelx_skipped_no_key():
+    report, status = await query_intelx("some_user", api_key=None)
+    assert report is None
+    assert status.status == "skipped"
+    assert "INTELX_API_KEY" in status.message

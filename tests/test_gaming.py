@@ -74,6 +74,7 @@ async def test_fetch_steam_profile_success():
         <vacBanned>0</vacBanned>
         <tradeBanState>None</tradeBanState>
         <onlineState>online</onlineState>
+        <summary><![CDATA[Welcome! Reach me on Discord: Investigator#1337 or dev@example.com]]></summary>
     </profile>
     """
     mock_resp = unittest.mock.MagicMock()
@@ -94,6 +95,7 @@ async def test_fetch_steam_profile_success():
     assert profile.real_name == "John Doe"
     assert profile.location == "United States"
     assert profile.vac_banned is False
+    assert "Investigator#1337" in profile.summary
 
 
 @pytest.mark.asyncio

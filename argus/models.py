@@ -42,6 +42,7 @@ class DiscordProfile(BaseModel):
     bot: bool = False
     system: bool = False
     reverse_image_urls: Optional[ReverseImageUrls] = None
+    bio: Optional[str] = None
 
 
 class SocialProfile(BaseModel):
@@ -116,6 +117,7 @@ class SteamProfile(BaseModel):
     real_name: Optional[str] = None
     location: Optional[str] = None
     avatar_url: Optional[str] = None
+    summary: Optional[str] = None
     member_since: Optional[str] = None
     vac_banned: bool = False
     trade_ban_state: Optional[str] = None

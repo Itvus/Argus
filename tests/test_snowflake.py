@@ -5,16 +5,27 @@ from datetime import datetime, timezone
 
 from argus.modules.snowflake import (
     DISCORD_EPOCH,
+    clean_snowflake,
     decode_snowflake,
     format_human_age,
     is_valid_snowflake,
 )
 
 
+def test_clean_snowflake():
+    assert clean_snowflake("<@155149108183695360>") == "155149108183695360"
+    assert clean_snowflake("<@!155149108183695360>") == "155149108183695360"
+    assert clean_snowflake("https://discord.com/users/155149108183695360") == "155149108183695360"
+    assert clean_snowflake("https://canary.discord.com/users/155149108183695360") == "155149108183695360"
+    assert clean_snowflake("  '155149108183695360'  ") == "155149108183695360"
+
+
 def test_is_valid_snowflake():
-    # Valid 17-19 digit Discord IDs
+    # Valid 17-19 digit Discord IDs and mentions
     assert is_valid_snowflake("155149108183695360") is True
     assert is_valid_snowflake(155149108183695360) is True
+    assert is_valid_snowflake("<@155149108183695360>") is True
+    assert is_valid_snowflake("https://discord.com/users/155149108183695360") is True
     assert is_valid_snowflake("136445063681700379") is True
     assert is_valid_snowflake("100000000000000000") is True
 
@@ -39,6 +50,10 @@ def test_decode_snowflake_known_id():
     assert meta.process_id == 0
     assert meta.increment == 0
     assert "year" in meta.age_human
+
+    # Decode mention syntax
+    meta_mention = decode_snowflake("<@155149108183695360>")
+    assert meta_mention.snowflake_id == 155149108183695360
 
 
 def test_decode_snowflake_invalid_raises():

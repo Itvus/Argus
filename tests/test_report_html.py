@@ -128,6 +128,16 @@ def test_save_html_report(sample_report: InvestigationReport, tmp_path: Path):
     assert "155149108183695360" in content
 
 
+def test_render_html_report_script_breakout_escaping(sample_report: InvestigationReport):
+    """Verify that graphData payload escapes HTML tags to prevent script injection."""
+    sample_report.social_profiles.append(
+        SocialProfile(platform="XSS", url="https://evil.com/</script><script>alert(1)</script>", status="Claimed")
+    )
+    rendered = render_html_report(sample_report)
+    assert "</script><script>" not in rendered.split("const graphData =")[1].split(";</script>")[0]
+    assert "\\u003c/script\\u003e" in rendered
+
+
 def test_view_html_report_custom_path(sample_report: InvestigationReport, tmp_path: Path):
     """Verify view_html_report opens custom path in browser."""
     out_file = tmp_path / "custom_view.html"

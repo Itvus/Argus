@@ -14,9 +14,11 @@ from typing import Callable, Optional
 
 from argus.config import Config
 from argus.models import (
+    CryptoLead,
     InvestigationReport,
     ModuleStatus,
     PivotLeads,
+    SocialProfile,
 )
 from argus.modules.avatar_hash import fetch_and_hash_avatars
 from argus.modules.correlation import calculate_correlation_score
@@ -33,7 +35,7 @@ from argus.modules.metadata_exif import inspect_avatar_metadata
 from argus.modules.package_registries import fetch_package_registries
 from argus.modules.pgp_keybase import lookup_keybase, lookup_openpgp_keys
 from argus.modules.snowflake import decode_snowflake, is_valid_snowflake
-from argus.modules.username_pivot import run_username_pivot
+from argus.modules.username_pivot import extract_leads_from_text, run_username_pivot
 from argus.modules.wayback import fetch_wayback_snapshots
 
 # Callback: (phase_title, completed_count, total_count, current_service_description)
@@ -284,8 +286,12 @@ class InvestigationOrchestrator:
             report.module_statuses.append(
                 ModuleStatus(module_name="Discord API", status=d_status, message=d_msg)
             )
-            if prof and prof.username:
-                discovered_username = prof.username
+            if prof:
+                if prof.username:
+                    discovered_username = prof.username
+                if prof.bio:
+                    d_bio_leads = extract_leads_from_text(prof.bio)
+                    self._merge_leads(report.pivot_leads, d_bio_leads)
 
         # Handle CordCat result
         if isinstance(cordcat_res, tuple) and len(cordcat_res) == 2:
@@ -378,6 +384,9 @@ class InvestigationOrchestrator:
             report.module_statuses.append(
                 ModuleStatus(module_name="Discord API (Pivot Lead)", status=d_stat, message=d_m)
             )
+            if d_prof and d_prof.bio:
+                d_leads = extract_leads_from_text(d_prof.bio)
+                self._merge_leads(report.pivot_leads, d_leads)
 
             cord_rec, c_stat = await query_cordcat(
                 user_id=lead_id,
@@ -470,16 +479,23 @@ class InvestigationOrchestrator:
             gh_lead, gh_status = github_res
             report.github_pivot = gh_lead
             report.module_statuses.append(gh_status)
-            if gh_lead and gh_lead.commit_emails:
-                for email in gh_lead.commit_emails:
-                    if email not in report.pivot_leads.discovered_emails:
-                        report.pivot_leads.discovered_emails.append(email)
+            if gh_lead:
+                if gh_lead.commit_emails:
+                    for email in gh_lead.commit_emails:
+                        if email not in report.pivot_leads.discovered_emails:
+                            report.pivot_leads.discovered_emails.append(email)
+                if gh_lead.bio:
+                    gh_leads = extract_leads_from_text(gh_lead.bio)
+                    self._merge_leads(report.pivot_leads, gh_leads)
 
         # Process Gaming pivot results
         if isinstance(gaming_res, tuple) and len(gaming_res) == 2:
             gaming_data, gaming_status = gaming_res
             report.gaming = gaming_data
             report.module_statuses.append(gaming_status)
+            if gaming_data and gaming_data.steam and gaming_data.steam.summary:
+                st_leads = extract_leads_from_text(gaming_data.steam.summary)
+                self._merge_leads(report.pivot_leads, st_leads)
 
         # Process Hudson Rock infostealer results
         if isinstance(hudson_res, tuple) and len(hudson_res) == 2:
@@ -508,7 +524,6 @@ class InvestigationOrchestrator:
                     c_addr = c_entry.get("address")
                     c_net = c_entry.get("network", "Crypto").capitalize()
                     if c_addr and not any(existing.address.lower() == c_addr.lower() for existing in report.pivot_leads.discovered_crypto):
-                        from argus.models import CryptoLead
                         report.pivot_leads.discovered_crypto.append(CryptoLead(network=c_net, address=c_addr))
             report.module_statuses.append(kb_stat)
 
@@ -538,18 +553,24 @@ class InvestigationOrchestrator:
             report.breaches.extend(breaches)
             report.module_statuses.append(b_status)
 
-            # Query Hudson Rock for discovered emails
-            for em in all_emails:
-                em_hr_data, em_hr_status = await fetch_hudson_rock_intel(
+            # Query Hudson Rock for discovered emails in parallel
+            hr_tasks = [
+                fetch_hudson_rock_intel(
                     query=em,
                     query_type="email",
                     timeout=self.config.timeout,
                     proxy=self.config.proxy,
                     progress_callback=progress_callback,
                 )
-                if em_hr_data and em_hr_data.total_stealers > 0:
-                    report.hudson_rock.append(em_hr_data)
-                report.module_statuses.append(em_hr_status)
+                for em in all_emails
+            ]
+            hr_results = await asyncio.gather(*hr_tasks, return_exceptions=True)
+            for res in hr_results:
+                if isinstance(res, tuple) and len(res) == 2:
+                    em_hr_data, em_hr_status = res
+                    if em_hr_data and em_hr_data.total_stealers > 0:
+                        report.hudson_rock.append(em_hr_data)
+                    report.module_statuses.append(em_hr_status)
 
             # Query OpenPGP key servers
             pgp_records, pgp_status = await lookup_openpgp_keys(
@@ -561,18 +582,25 @@ class InvestigationOrchestrator:
             report.pgp_keys.extend(pgp_records)
             report.module_statuses.append(pgp_status)
 
-            # Custom domain infrastructure reconnaissance (RDAP + crt.sh)
+            # Custom domain infrastructure reconnaissance (RDAP + crt.sh) in parallel
             custom_domains = extract_custom_domains(all_emails)
-            for c_dom in custom_domains:
-                d_rec, d_stat = await recon_domain(
-                    domain=c_dom,
-                    timeout=self.config.timeout,
-                    proxy=self.config.proxy,
-                    progress_callback=progress_callback,
-                )
-                if d_rec:
-                    report.domain_recon.append(d_rec)
-                report.module_statuses.append(d_stat)
+            if custom_domains:
+                domain_tasks = [
+                    recon_domain(
+                        domain=c_dom,
+                        timeout=self.config.timeout,
+                        proxy=self.config.proxy,
+                        progress_callback=progress_callback,
+                    )
+                    for c_dom in custom_domains
+                ]
+                domain_results = await asyncio.gather(*domain_tasks, return_exceptions=True)
+                for res in domain_results:
+                    if isinstance(res, tuple) and len(res) == 2:
+                        d_rec, d_stat = res
+                        if d_rec:
+                            report.domain_recon.append(d_rec)
+                        report.module_statuses.append(d_stat)
         else:
             report.module_statuses.append(
                 ModuleStatus(
@@ -586,16 +614,22 @@ class InvestigationOrchestrator:
         if email_sites:
             all_emails = list(dict.fromkeys(report.pivot_leads.discovered_emails))
             if all_emails:
-                for em in all_emails:
-                    reg_report, reg_status = await check_email_registrations(
+                holehe_tasks = [
+                    check_email_registrations(
                         email=em,
                         timeout=self.config.timeout,
                         proxy=self.config.proxy,
                         progress_callback=progress_callback,
                     )
-                    if reg_report:
-                        report.email_registrations.append(reg_report)
-                    report.module_statuses.append(reg_status)
+                    for em in all_emails
+                ]
+                holehe_results = await asyncio.gather(*holehe_tasks, return_exceptions=True)
+                for res in holehe_results:
+                    if isinstance(res, tuple) and len(res) == 2:
+                        reg_report, reg_status = res
+                        if reg_report:
+                            report.email_registrations.append(reg_report)
+                        report.module_statuses.append(reg_status)
             else:
                 report.module_statuses.append(
                     ModuleStatus(
@@ -606,8 +640,10 @@ class InvestigationOrchestrator:
                 )
 
     @staticmethod
-    def _merge_leads(target_leads: PivotLeads, new_leads: PivotLeads) -> None:
+    def _merge_leads(target_leads: PivotLeads, new_leads: Optional[PivotLeads]) -> None:
         """Merge new investigative leads into target without duplicates."""
+        if not new_leads:
+            return
         for inv in new_leads.discovered_invites:
             if inv not in target_leads.discovered_invites:
                 target_leads.discovered_invites.append(inv)

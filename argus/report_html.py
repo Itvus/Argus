@@ -130,6 +130,15 @@ def render_html_report(report: InvestigationReport) -> str:
             </div>
             """
 
+        bio_info = ""
+        if dp.bio:
+            bio_info = f"""
+            <div class="telemetry-item" style="grid-column: 1 / -1;">
+              <span class="telemetry-label">About / Bio</span>
+              <span class="telemetry-value text-sm">{html.escape(dp.bio)}</span>
+            </div>
+            """
+
         profile_html = f"""
         <div class="panel">
           <div class="panel-header">
@@ -155,6 +164,7 @@ def render_html_report(report: InvestigationReport) -> str:
                   </span>
                 </div>
                 {banner_info}
+                {bio_info}
               </div>
               {rev_search_html}
             </div>
@@ -217,6 +227,10 @@ def render_html_report(report: InvestigationReport) -> str:
                       <span class="telemetry-label">Real Name / Location</span>
                       <span class="telemetry-value">{html.escape(st.real_name or 'N/A')} ({html.escape(st.location or 'N/A')})</span>
                     </div>
+                    {f'''<div class="telemetry-item" style="grid-column: 1 / -1;">
+                      <span class="telemetry-label">Bio / Summary</span>
+                      <span class="telemetry-value text-sm text-muted">{html.escape(st.summary)}</span>
+                    </div>''' if st.summary else ''}
                   </div>
                 </div>
                 """
@@ -936,7 +950,17 @@ def render_html_report(report: InvestigationReport) -> str:
         graph_nodes.append({"id": nid, "label": f"{cl.network}:{cl.address[:8]}...", "sub": cl.network, "type": "crypto", "color": "#ec4899", "radius": 9})
         graph_edges.append({"source": "target", "target": nid})
 
-    graph_payload_json = json.dumps({"nodes": graph_nodes, "edges": graph_edges})
+    for idx, ml in enumerate(report.pivot_leads.discovered_messaging):
+        nid = f"msg_{idx}"
+        graph_nodes.append({"id": nid, "label": f"{ml.platform}:{ml.handle}", "sub": ml.platform, "type": "messaging", "color": "#10b981", "radius": 9, "url": ml.url or ""})
+        graph_edges.append({"source": "target", "target": nid})
+
+    graph_payload_json = (
+        json.dumps({"nodes": graph_nodes, "edges": graph_edges})
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
     graph_html = f"""
     <div class="panel" id="graphContainerPanel">

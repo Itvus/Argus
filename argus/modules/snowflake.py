@@ -19,9 +19,21 @@ DISCORD_EPOCH = 1420070400000  # 2015-01-01 00:00:00.000 UTC
 SNOWFLAKE_REGEX = re.compile(r"^\d{17,20}$")
 
 
+def clean_snowflake(target: Union[str, int]) -> str:
+    """Normalize and extract raw numeric snowflake ID from mentions, links, or strings."""
+    s = str(target).strip().strip("'\"`")
+    if s.startswith("<@") and s.endswith(">"):
+        s = s.strip("<@!>")
+    if "discord.com/users/" in s:
+        s = s.split("discord.com/users/")[-1].split("/")[0].split("?")[0]
+    elif "discordapp.com/users/" in s:
+        s = s.split("discordapp.com/users/")[-1].split("/")[0].split("?")[0]
+    return s.strip()
+
+
 def is_valid_snowflake(target: Union[str, int]) -> bool:
     """Validate whether target matches a Discord Snowflake ID pattern."""
-    target_str = str(target).strip()
+    target_str = clean_snowflake(target)
     if not SNOWFLAKE_REGEX.match(target_str):
         return False
     try:
@@ -57,10 +69,10 @@ def format_human_age(delta_seconds: float) -> str:
 
 def decode_snowflake(snowflake: Union[str, int]) -> SnowflakeMetadata:
     """Decode a Discord Snowflake ID into timestamp, worker ID, process ID, and increment."""
-    target_str = str(snowflake).strip()
-    if not SNOWFLAKE_REGEX.match(target_str):
+    target_str = clean_snowflake(snowflake)
+    if not is_valid_snowflake(target_str):
         raise ValueError(
-            f"Invalid Discord Snowflake ID '{snowflake}'. Must be a 17-20 digit integer."
+            f"Invalid Discord Snowflake ID '{snowflake}'. Must be a valid 17-20 digit integer created after Discord Epoch (Jan 1, 2015)."
         )
 
     val = int(target_str)

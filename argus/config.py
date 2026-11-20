@@ -52,8 +52,11 @@ class Config:
             proxy
             or os.getenv("ARGUS_PROXY")
             or os.getenv("ALL_PROXY")
+            or os.getenv("all_proxy")
             or os.getenv("HTTPS_PROXY")
+            or os.getenv("https_proxy")
             or os.getenv("HTTP_PROXY")
+            or os.getenv("http_proxy")
             or None
         )
         return cls(

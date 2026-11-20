@@ -282,7 +282,7 @@ def extract_crypto_leads(text: str) -> list[CryptoLead]:
 
 
 def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead]:
-    """Extract Telegram, Matrix, and Signal handles with anti-noise platform filtering."""
+    """Extract Telegram, Matrix, Signal, Session, Tox, SimpleX, and XMPP leads."""
     leads: list[MessagingLead] = []
     seen: set[str] = set()
 
@@ -301,36 +301,87 @@ def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead
     # 1. Telegram links (t.me/<username>)
     for m in re.finditer(r"(?:https?://)?(?:t\.me|telegram\.me)/([a-zA-Z0-9_]{5,32})\b", text, re.IGNORECASE):
         handle = m.group(1)
-        if handle.lower() not in ignored_tg and handle.lower() not in seen:
-            seen.add(handle.lower())
+        k = f"telegram:{handle.lower()}"
+        if handle.lower() not in ignored_tg and k not in seen:
+            seen.add(k)
             leads.append(MessagingLead(platform="Telegram", handle=f"@{handle}", url=f"https://t.me/{handle}"))
 
     # Explicit Telegram text labels ("telegram: @username" or "tg: username")
     for m in re.finditer(r"(?:telegram|tg)[\s:=]+@?([a-zA-Z0-9_]{5,32})\b", text, re.IGNORECASE):
         handle = m.group(1)
-        if handle.lower() not in ignored_tg and handle.lower() not in seen:
-            seen.add(handle.lower())
+        k = f"telegram:{handle.lower()}"
+        if handle.lower() not in ignored_tg and k not in seen:
+            seen.add(k)
             leads.append(MessagingLead(platform="Telegram", handle=f"@{handle}", url=f"https://t.me/{handle}"))
 
     # 2. Matrix handles (@username:matrix.org)
     for m in re.finditer(r"@([a-zA-Z0-9_.-]{2,64}:[a-zA-Z0-9_.-]+\.[a-zA-Z]{2,10})\b", text):
         handle = m.group(1)
-        if handle.lower() not in seen:
-            seen.add(handle.lower())
+        k = f"matrix:{handle.lower()}"
+        if k not in seen:
+            seen.add(k)
             leads.append(MessagingLead(platform="Matrix", handle=f"@{handle}"))
 
     # 3. Signal links and text markers
     for m in re.finditer(r"(?:https?://)?signal\.me/#p/([a-zA-Z0-9_.-]+)\b", text, re.IGNORECASE):
         handle = m.group(1)
-        if handle.lower() not in seen:
-            seen.add(handle.lower())
+        k = f"signal:{handle.lower()}"
+        if k not in seen:
+            seen.add(k)
             leads.append(MessagingLead(platform="Signal", handle=handle, url=f"https://signal.me/#p/{handle}"))
 
     for m in re.finditer(r"(?:signal)[\s:=]+@?([a-zA-Z0-9_.-]{3,32})\b", text, re.IGNORECASE):
         handle = m.group(1)
-        if handle.lower() not in seen and handle.lower() not in ("desktop", "messenger", "protocol", "app"):
-            seen.add(handle.lower())
+        k = f"signal:{handle.lower()}"
+        if k not in seen and handle.lower() not in ("desktop", "messenger", "protocol", "app"):
+            seen.add(k)
             leads.append(MessagingLead(platform="Signal", handle=handle))
+
+    # 4. Session IDs (66 hex characters starting with 05)
+    for m in re.finditer(r"(?:session(?:[\s_-]?id)?)[\s:=]+([0-9a-fA-F]{66})\b", text, re.IGNORECASE):
+        s_id = m.group(1).lower()
+        k = f"session:{s_id}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="Session", handle=s_id))
+
+    for m in re.finditer(r"\b(05[0-9a-fA-F]{64})\b", text):
+        s_id = m.group(1).lower()
+        k = f"session:{s_id}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="Session", handle=s_id))
+
+    # 5. Tox IDs (76 hex characters)
+    for m in re.finditer(r"(?:tox(?:[\s_-]?id)?)[\s:=]+([0-9a-fA-F]{76})\b", text, re.IGNORECASE):
+        t_id = m.group(1).upper()
+        k = f"tox:{t_id}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="Tox", handle=t_id))
+
+    for m in re.finditer(r"\b([0-9a-fA-F]{76})\b", text):
+        t_id = m.group(1).upper()
+        k = f"tox:{t_id}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="Tox", handle=t_id))
+
+    # 6. SimpleX Chat links & handles
+    for m in re.finditer(r"(?:https?://)?simplex\.chat/contact#/?([^\s\"'>]+)", text, re.IGNORECASE):
+        h = m.group(1).strip()
+        k = f"simplex:{h.lower()}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="SimpleX", handle=f"simplex.chat/contact#/?{h}", url=f"https://simplex.chat/contact#/?{h}"))
+
+    # 7. XMPP / Jabber handles
+    for m in re.finditer(r"(?:xmpp:|jabber:|(?:xmpp|jabber)[\s:=]+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b", text, re.IGNORECASE):
+        jid = m.group(1).lower()
+        k = f"xmpp:{jid}"
+        if k not in seen and not jid.endswith(".png") and not jid.endswith(".jpg"):
+            seen.add(k)
+            leads.append(MessagingLead(platform="XMPP", handle=jid, url=f"xmpp:{jid}"))
 
     return leads
 
@@ -367,6 +418,39 @@ class MaigretProgressNotifier:
 
     def finish(self, *args, **kwargs):
         pass
+
+
+def extract_leads_from_text(
+    text: str, site_url: str = "", target_username: str = ""
+) -> PivotLeads:
+    """Extract Discord invites, tags, snowflake IDs, emails, crypto, and messaging leads from free text."""
+    if not text:
+        return PivotLeads()
+
+    raw_invites = DISCORD_INVITE_REGEX.findall(text)
+    invites = list(clean_discord_invites(raw_invites, site_url=site_url))
+
+    tags = list(set(DISCORD_TAG_REGEX.findall(text)))
+
+    ids: list[str] = []
+    for raw_id in DISCORD_ID_REGEX.findall(text):
+        if is_valid_snowflake(raw_id) and raw_id not in ids:
+            ids.append(raw_id)
+
+    found_emails = EMAIL_REGEX.findall(text)
+    emails = list(clean_emails(found_emails, site_url=site_url, target_username=target_username))
+
+    crypto = extract_crypto_leads(text)
+    messaging = extract_messaging_leads(text, site_url=site_url)
+
+    return PivotLeads(
+        discovered_emails=emails,
+        discovered_discord_ids=ids,
+        discovered_discord_tags=tags,
+        discovered_invites=invites,
+        discovered_crypto=crypto,
+        discovered_messaging=messaging,
+    )
 
 
 async def _fetch_and_extract_leads(
@@ -484,29 +568,19 @@ async def _fetch_and_extract_leads(
             # Target text: If bio text exists, search bio text; otherwise fall back to cleaned page text
             text_to_search = bio_text_blob if bio_text_blob.strip() else page_text_blob
 
-            # 1. Invites (only from bio text if present, to avoid site-level community invites)
-            invite_source = bio_text_blob if bio_text_blob.strip() else page_text_blob
-            raw_invites = DISCORD_INVITE_REGEX.findall(invite_source)
-            invites.update(clean_discord_invites(raw_invites, site_url=url))
+            extracted = extract_leads_from_text(text_to_search, site_url=url, target_username=target_username)
+            # If bio text was present, ensure invites were checked specifically against bio text
+            if bio_text_blob.strip() and bio_text_blob != text_to_search:
+                bio_extracted = extract_leads_from_text(bio_text_blob, site_url=url, target_username=target_username)
+                invites.update(bio_extracted.discovered_invites)
+            else:
+                invites.update(extracted.discovered_invites)
 
-            # 2. Legacy Discord tags
-            for tag in DISCORD_TAG_REGEX.findall(text_to_search):
-                tags.add(tag)
-
-            # 3. Discord Snowflake IDs (contextual prefix required)
-            for raw_id in DISCORD_ID_REGEX.findall(text_to_search):
-                if is_valid_snowflake(raw_id):
-                    ids.add(raw_id)
-
-            # 4. Emails
-            found_emails = EMAIL_REGEX.findall(text_to_search)
-            emails.update(clean_emails(found_emails, site_url=url, target_username=target_username))
-
-            # 5. Cryptocurrency wallet addresses (Bitcoin, Ethereum, Solana)
-            crypto.extend(extract_crypto_leads(text_to_search))
-
-            # 6. Messaging handles (Telegram, Matrix, Signal)
-            messaging.extend(extract_messaging_leads(text_to_search, site_url=url))
+            tags.update(extracted.discovered_discord_tags)
+            ids.update(extracted.discovered_discord_ids)
+            emails.update(extracted.discovered_emails)
+            crypto.extend(extracted.discovered_crypto)
+            messaging.extend(extracted.discovered_messaging)
 
         except Exception:
             pass

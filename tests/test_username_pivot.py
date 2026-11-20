@@ -168,21 +168,55 @@ def test_extract_crypto_leads():
 def test_extract_messaging_leads():
     from argus.modules.username_pivot import extract_messaging_leads
 
+    session_id = "05" + "ab" * 32
+    tox_id = "1234567890ABCDEF" * 4 + "1234567890ABCDEF"[:12]
+
     sample = (
         "Reach me on Telegram: t.me/sec_operative or tg: @devops_lead. "
         "Ignore platform link t.me/share and t.me/joinchat. "
         "Matrix: @alice:matrix.org or @bob:federation.chat. "
-        "Signal: https://signal.me/#p/sec.42 or signal: my_alias."
+        "Signal: https://signal.me/#p/sec.42 or signal: my_alias. "
+        f"Session ID: {session_id}. "
+        f"Tox ID: {tox_id}. "
+        "SimpleX: https://simplex.chat/contact#/?v=1&smp=test_link. "
+        "XMPP: user.name@jabber.ccc.de or xmpp:secops@calyxinstitute.org."
     )
     leads = extract_messaging_leads(sample, site_url="https://secops.com/profile")
     handles = {l.handle for l in leads}
+    platforms = {l.platform for l in leads}
 
     assert "@sec_operative" in handles
     assert "@devops_lead" in handles
     assert "@alice:matrix.org" in handles
     assert "@bob:federation.chat" in handles
+    assert session_id in handles
+    assert tox_id in handles
+    assert "user.name@jabber.ccc.de" in handles
+    assert "secops@calyxinstitute.org" in handles
+
+    assert "Session" in platforms
+    assert "Tox" in platforms
+    assert "SimpleX" in platforms
+    assert "XMPP" in platforms
 
     # Verify platform noise rejected
     assert "@share" not in handles
     assert "@joinchat" not in handles
     assert "@secops" not in handles
+
+
+def test_extract_leads_from_text():
+    from argus.modules.username_pivot import extract_leads_from_text
+
+    sample = (
+        "Hello! Discord: @investigator, user ID discord: 155149108183695360, "
+        "Join discord.gg/cyber-defense. Email me at lead@domain.org. "
+        "BTC: 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa. "
+        "Session: 050102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20."
+    )
+    leads = extract_leads_from_text(sample, site_url="https://example.com")
+    assert "lead@domain.org" in leads.discovered_emails
+    assert "155149108183695360" in leads.discovered_discord_ids
+    assert "https://discord.gg/cyber-defense" in leads.discovered_invites
+    assert any(c.network == "Bitcoin" for c in leads.discovered_crypto)
+    assert any(m.platform == "Session" for m in leads.discovered_messaging)

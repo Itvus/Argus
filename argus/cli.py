@@ -29,6 +29,8 @@ from rich.progress import (
 )
 from rich.table import Table
 from rich.text import Text
+from rich.style import Style
+from rich.markup import escape
 
 from argus import __version__
 from argus.config import _discover_and_load_env, get_config
@@ -137,16 +139,31 @@ def run_with_progress(
     return result
 
 
+def safe_escape(v: Any) -> str:
+    """Escape arbitrary text for safe inclusion in Rich console markup."""
+    if v is None:
+        return ""
+    return escape(str(v))
+
+
+def make_link(url: Optional[str], label: Optional[str] = None) -> Union[Text, str]:
+    """Create a safe clickable link for Rich console."""
+    if not url:
+        return ""
+    display_label = label if label is not None else url
+    return Text(display_label, style=Style(link=url, underline=True, color="blue"))
+
+
 def render_report_rich(report: InvestigationReport) -> None:
     """Render comprehensive multi-panel terminal report using Rich."""
     # 1. Target Header Panel
     target_header = Table.grid(padding=(0, 2))
     target_header.add_column(style="bold yellow", justify="right")
     target_header.add_column(style="white")
-    target_header.add_row("Investigative Target:", report.target)
-    target_header.add_row("Detected Entity Type:", f"[bold cyan]{report.target_type.upper()}[/bold cyan]")
+    target_header.add_row("Investigative Target:", safe_escape(report.target))
+    target_header.add_row("Detected Entity Type:", f"[bold cyan]{safe_escape(report.target_type.upper())}[/bold cyan]")
     target_header.add_row("Scan Execution Time:", f"{report.scan_duration_seconds}s")
-    target_header.add_row("Timestamp (UTC):", report.scan_timestamp_utc)
+    target_header.add_row("Timestamp (UTC):", safe_escape(report.scan_timestamp_utc))
 
     console.print(
         Panel(
@@ -206,26 +223,29 @@ def render_report_rich(report: InvestigationReport) -> None:
         dp_table.add_column("Field", style="bold magenta", width=22)
         dp_table.add_column("Value", style="white")
 
-        handle_display = f"@{dp.username}"
+        handle_display = f"@{safe_escape(dp.username)}"
         if dp.discriminator and dp.discriminator != "0":
-            handle_display += f"#{dp.discriminator}"
+            handle_display += f"#{safe_escape(dp.discriminator)}"
         dp_table.add_row("Username / Handle", handle_display)
 
         if dp.global_name:
-            dp_table.add_row("Global Display Name", dp.global_name)
-        dp_table.add_row("User ID", dp.id)
+            dp_table.add_row("Global Display Name", safe_escape(dp.global_name))
+        dp_table.add_row("User ID", safe_escape(dp.id))
 
-        badges_str = ", ".join(dp.badges) if dp.badges else "[dim]None detected[/dim]"
+        badges_str = ", ".join(safe_escape(b) for b in dp.badges) if dp.badges else "[dim]None detected[/dim]"
         dp_table.add_row("Public Badges", f"[bold yellow]{badges_str}[/bold yellow]")
 
         if dp.banner_color:
-            dp_table.add_row("Banner / Accent Color", dp.banner_color)
+            dp_table.add_row("Banner / Accent Color", safe_escape(dp.banner_color))
 
         if dp.avatar_url:
-            dp_table.add_row("Avatar CDN (1024px)", f"[link={dp.avatar_url}]{dp.avatar_url}[/link]")
+            dp_table.add_row("Avatar CDN (1024px)", make_link(dp.avatar_url))
 
         if dp.banner_url:
-            dp_table.add_row("Banner CDN (1024px)", f"[link={dp.banner_url}]{dp.banner_url}[/link]")
+            dp_table.add_row("Banner CDN (1024px)", make_link(dp.banner_url))
+
+        if dp.bio:
+            dp_table.add_row("Profile Bio / About", safe_escape(dp.bio))
 
         # Reverse Image Search URLs
         if dp.reverse_image_urls:
@@ -280,14 +300,14 @@ def render_report_rich(report: InvestigationReport) -> None:
 
         for p in report.social_profiles:
             if p.platform.lower() == "discord" or p.url.startswith("@"):
-                handle_str = p.url if p.url.startswith("@") else f"@{p.url}"
+                handle_str = safe_escape(p.url if p.url.startswith("@") else f"@{p.url}")
                 soc_table.add_row(
-                    p.platform,
-                    p.status,
+                    safe_escape(p.platform),
+                    safe_escape(p.status),
                     f"[bold magenta]{handle_str}[/bold magenta] [dim](Handle Registered)[/dim]",
                 )
             else:
-                soc_table.add_row(p.platform, p.status, f"[link={p.url}]{p.url}[/link]")
+                soc_table.add_row(safe_escape(p.platform), safe_escape(p.status), make_link(p.url))
 
         console.print(
             Panel(
@@ -307,9 +327,9 @@ def render_report_rich(report: InvestigationReport) -> None:
         if report.gaming.minecraft:
             mc = report.gaming.minecraft
             mc_info = (
-                f"Player Username: [bold]{mc.username}[/bold]\n"
-                f"Formatted UUID: [cyan]{mc.uuid_formatted}[/cyan]\n"
-                f"Skin Render: [dim]{mc.skin_render_url}[/dim]"
+                f"Player Username: [bold]{safe_escape(mc.username)}[/bold]\n"
+                f"Formatted UUID: [cyan]{safe_escape(mc.uuid_formatted)}[/cyan]\n"
+                f"Skin Render: [dim]{safe_escape(mc.skin_render_url)}[/dim]"
             )
             game_table.add_row("Minecraft (Mojang)", mc_info)
 
@@ -317,15 +337,18 @@ def render_report_rich(report: InvestigationReport) -> None:
             st = report.gaming.steam
             vac_text = "[bold green]Clean (No Bans)[/bold green]" if not st.vac_banned else "[bold red]VAC BANNED[/bold red]"
             st_info = (
-                f"Custom URL: [bold]{st.custom_url}[/bold]\n"
-                f"SteamID64: [cyan]{st.steam_id_64}[/cyan]\n"
-                f"Profile Link: [link={st.profile_url}]{st.profile_url}[/link]\n"
+                f"Custom URL: [bold]{safe_escape(st.custom_url)}[/bold]\n"
+                f"SteamID64: [cyan]{safe_escape(st.steam_id_64)}[/cyan]\n"
+                f"Profile Link: {make_link(st.profile_url)}\n"
                 f"VAC Status: {vac_text}"
             )
             if st.real_name:
-                st_info += f"\nReal Name: {st.real_name}"
+                st_info += f"\nReal Name: {safe_escape(st.real_name)}"
             if st.location:
-                st_info += f"\nLocation: {st.location}"
+                st_info += f"\nLocation: {safe_escape(st.location)}"
+            if st.summary:
+                summary_preview = st.summary if len(st.summary) <= 120 else f"{st.summary[:117]}..."
+                st_info += f"\nBio / Summary: [dim]{safe_escape(summary_preview)}[/dim]"
             game_table.add_row("Steam Community", st_info)
 
         console.print(
@@ -344,23 +367,23 @@ def render_report_rich(report: InvestigationReport) -> None:
         gh_table.add_column("Field", style="bold purple", width=22)
         gh_table.add_column("Details", style="white")
 
-        gh_table.add_row("GitHub Profile", f"[link={gh.profile_url}]{gh.profile_url}[/link]")
+        gh_table.add_row("GitHub Profile", make_link(gh.profile_url))
         if gh.name:
-            gh_table.add_row("Real Name", gh.name)
+            gh_table.add_row("Real Name", safe_escape(gh.name))
         if gh.company:
-            gh_table.add_row("Company / Org", gh.company)
+            gh_table.add_row("Company / Org", safe_escape(gh.company))
         if gh.location:
-            gh_table.add_row("Location", gh.location)
+            gh_table.add_row("Location", safe_escape(gh.location))
         if gh.blog:
-            gh_table.add_row("Website / Blog", gh.blog)
+            gh_table.add_row("Website / Blog", safe_escape(gh.blog))
         if gh.bio:
-            gh_table.add_row("Public Bio", gh.bio)
+            gh_table.add_row("Public Bio", safe_escape(gh.bio))
         if gh.created_at:
-            gh_table.add_row("Created At", gh.created_at)
+            gh_table.add_row("Created At", safe_escape(gh.created_at))
         if gh.age_comparison_discord:
-            gh_table.add_row("Timeline Lead", f"[bold yellow]{gh.age_comparison_discord}[/bold yellow]")
+            gh_table.add_row("Timeline Lead", f"[bold yellow]{safe_escape(gh.age_comparison_discord)}[/bold yellow]")
         if gh.commit_emails:
-            gh_table.add_row("Public Commit Emails", f"[bold green]{', '.join(gh.commit_emails)}[/bold green]")
+            gh_table.add_row("Public Commit Emails", f"[bold green]{', '.join(safe_escape(e) for e in gh.commit_emails)}[/bold green]")
 
         console.print(
             Panel(
@@ -380,10 +403,10 @@ def render_report_rich(report: InvestigationReport) -> None:
         b_table.add_column("Compromised Data", style="dim white")
 
         for b in report.breaches:
-            classes = ", ".join(b.data_classes[:4])
+            classes = ", ".join(safe_escape(c) for c in b.data_classes[:4])
             if len(b.data_classes) > 4:
                 classes += f" (+{len(b.data_classes)-4} more)"
-            b_table.add_row(b.query, b.service_name, b.breach_date or "N/A", classes)
+            b_table.add_row(safe_escape(b.query), safe_escape(b.service_name), safe_escape(b.breach_date or "N/A"), classes)
 
         console.print(
             Panel(
@@ -982,6 +1005,11 @@ def config_command() -> None:
         "GITHUB_TOKEN",
         cfg.mask_key(cfg.github_token),
         "Optional PAT raising GitHub API rate limit from 60 to 5,000 req/hr",
+    )
+    table.add_row(
+        "INTELX_API_KEY",
+        cfg.mask_key(cfg.intelx_api_key),
+        "Queries Intelligence X API for darknet archives and public data leaks",
     )
 
     console.print(Panel(f"[bold]Active .env File(s):[/bold] {path_text}", border_style="dim"))

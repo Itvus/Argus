@@ -147,6 +147,7 @@ async def fetch_discord_profile(
                     bot=bool(data.get("bot", False)),
                     system=bool(data.get("system", False)),
                     reverse_image_urls=generate_reverse_image_urls(avatar_url),
+                    bio=data.get("bio") or None,
                 )
                 return profile, "success", None
 

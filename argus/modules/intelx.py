@@ -32,14 +32,21 @@ async def query_intelx(
             message="Empty selector query",
         )
 
+    if not api_key or not api_key.strip():
+        if progress_callback:
+            progress_callback("Intelligence X", 1, 1, "Skipped (No API key)")
+        return None, ModuleStatus(
+            module_name="Intelligence X",
+            status="skipped",
+            message="INTELX_API_KEY is not configured in .env. Intelligence X queries skipped.",
+        )
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "argus-osint/0.1.0 (+https://github.com/argus)",
         "Accept": "application/json",
         "Content-Type": "application/json",
+        "x-key": api_key.strip(),
     }
-    # Free tier / public phonebook uses default public access if no key provided
-    key = api_key.strip() if api_key else "2bbba20f-08e0-4a87-9d7a-1941a4a16999"
-    headers["x-key"] = key
 
     if progress_callback:
         progress_callback("Intelligence X", 0, 1, f"Querying darknet archives for '{clean_selector}'...")

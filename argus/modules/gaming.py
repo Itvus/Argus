@@ -7,6 +7,7 @@ Adheres strictly to targeting precision: Only queries and matches the exact targ
 from __future__ import annotations
 
 import asyncio
+import re
 import xml.etree.ElementTree as ET
 from typing import Callable, Optional, Tuple
 
@@ -94,6 +95,14 @@ async def fetch_steam_profile(
                     trade_ban_state = root.findtext("tradeBanState")
                     online_state = root.findtext("onlineState")
 
+                    summary_raw = root.findtext("summary")
+                    summary = None
+                    if summary_raw:
+                        clean_summary = re.sub(r"<[^>]+>", " ", summary_raw).strip()
+                        clean_summary = re.sub(r"\s+", " ", clean_summary)
+                        if clean_summary:
+                            summary = clean_summary
+
                     return SteamProfile(
                         steam_id_64=steam_id_64,
                         custom_url=clean_username,
@@ -101,6 +110,7 @@ async def fetch_steam_profile(
                         real_name=real_name or None,
                         location=location or None,
                         avatar_url=avatar_url or None,
+                        summary=summary,
                         member_since=member_since or None,
                         vac_banned=vac_banned,
                         trade_ban_state=trade_ban_state or None,
