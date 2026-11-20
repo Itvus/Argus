@@ -147,12 +147,18 @@ IGNORED_EXTENSIONS = (".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp", ".js", "
 
 
 def get_base_domain(url: str) -> str:
-    """Extract root domain without www or subdomains from URL."""
+    """Extract root/apex domain without www or subdomains from URL."""
     try:
-        host = urlparse(url).netloc.lower()
+        host = urlparse(url).netloc.lower().split(":")[0]
         if host.startswith("www."):
             host = host[4:]
-        return host
+        parts = host.split(".")
+        if len(parts) <= 2:
+            return host
+        # Handle ccTLD combinations like .co.uk, .com.au, .org.uk, .co.jp
+        if len(parts) >= 3 and parts[-2] in ("co", "com", "org", "net", "gov", "edu", "ac") and len(parts[-1]) == 2:
+            return ".".join(parts[-3:])
+        return ".".join(parts[-2:])
     except Exception:
         return ""
 
@@ -792,6 +798,7 @@ async def run_username_pivot(
         }
         async with httpx.AsyncClient(timeout=10.0, headers=headers, proxy=proxy) as client:
             done_count = 0
+            counter_lock = asyncio.Lock()
             total_scrapable = len(scrapable_profiles)
 
             async def wrapped_fetch(p: SocialProfile):
@@ -799,12 +806,14 @@ async def run_username_pivot(
                 res = await _fetch_and_extract_leads(
                     p.url, client, semaphore, target_username=clean_username
                 )
-                done_count += 1
+                async with counter_lock:
+                    done_count += 1
+                    current_done = done_count
                 if progress_callback:
                     short_url = p.url if len(p.url) <= 45 else f"{p.url[:42]}..."
                     progress_callback(
                         "Extracting Profile Leads",
-                        done_count,
+                        current_done,
                         total_scrapable,
                         f"{p.platform}: {short_url}",
                     )

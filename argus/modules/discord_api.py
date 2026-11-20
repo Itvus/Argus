@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import urllib.parse
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import httpx
 
+from argus import __version__
 from argus.models import DiscordProfile, ReverseImageUrls
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
@@ -79,6 +80,40 @@ def generate_reverse_image_urls(image_url: str) -> ReverseImageUrls:
     )
 
 
+def parse_discord_profile_payload(data: dict[str, Any], user_id: str) -> DiscordProfile:
+    """Parse Discord REST API user JSON payload into a validated DiscordProfile model."""
+    flags = data.get("public_flags", 0) or 0
+    avatar_hash = data.get("avatar")
+    discriminator = data.get("discriminator", "0")
+    avatar_url = build_avatar_url(user_id, avatar_hash, discriminator)
+    banner_hash = data.get("banner")
+    banner_url = build_banner_url(user_id, banner_hash)
+
+    accent_color = data.get("accent_color")
+    banner_color = data.get("banner_color")
+    if not banner_color and accent_color is not None:
+        banner_color = f"#{accent_color:06x}"
+
+    return DiscordProfile(
+        id=str(data.get("id", user_id)),
+        username=data.get("username", ""),
+        global_name=data.get("global_name"),
+        discriminator=discriminator,
+        avatar_hash=avatar_hash,
+        avatar_url=avatar_url,
+        banner_hash=banner_hash,
+        banner_url=banner_url,
+        accent_color=accent_color,
+        banner_color=banner_color,
+        public_flags=flags,
+        badges=decode_discord_badges(flags),
+        bot=bool(data.get("bot", False)),
+        system=bool(data.get("system", False)),
+        reverse_image_urls=generate_reverse_image_urls(avatar_url),
+        bio=data.get("bio") or None,
+    )
+
+
 async def fetch_discord_profile(
     user_id: str,
     bot_token: Optional[str],
@@ -106,7 +141,7 @@ async def fetch_discord_profile(
 
     headers = {
         "Authorization": f"Bot {bot_token.strip()}",
-        "User-Agent": "argus/0.1.0 (OSINT investigation tool; +https://github.com/argus)",
+        "User-Agent": f"argus/{__version__} (+https://github.com/Itvus/Argus)",
         "Accept": "application/json",
     }
     url = f"{DISCORD_API_BASE}/users/{user_id}"
@@ -118,37 +153,7 @@ async def fetch_discord_profile(
                 progress_callback("Discord API Lookup", 1, 1, f"HTTP {resp.status_code}")
 
             if resp.status_code == 200:
-                data = resp.json()
-                flags = data.get("public_flags", 0) or 0
-                avatar_hash = data.get("avatar")
-                discriminator = data.get("discriminator", "0")
-                avatar_url = build_avatar_url(user_id, avatar_hash, discriminator)
-                banner_hash = data.get("banner")
-                banner_url = build_banner_url(user_id, banner_hash)
-
-                accent_color = data.get("accent_color")
-                banner_color = data.get("banner_color")
-                if not banner_color and accent_color is not None:
-                    banner_color = f"#{accent_color:06x}"
-
-                profile = DiscordProfile(
-                    id=str(data.get("id", user_id)),
-                    username=data.get("username", ""),
-                    global_name=data.get("global_name"),
-                    discriminator=discriminator,
-                    avatar_hash=avatar_hash,
-                    avatar_url=avatar_url,
-                    banner_hash=banner_hash,
-                    banner_url=banner_url,
-                    accent_color=accent_color,
-                    banner_color=banner_color,
-                    public_flags=flags,
-                    badges=decode_discord_badges(flags),
-                    bot=bool(data.get("bot", False)),
-                    system=bool(data.get("system", False)),
-                    reverse_image_urls=generate_reverse_image_urls(avatar_url),
-                    bio=data.get("bio") or None,
-                )
+                profile = parse_discord_profile_payload(resp.json(), user_id)
                 return profile, "success", None
 
             if resp.status_code == 404:
@@ -173,35 +178,7 @@ async def fetch_discord_profile(
                 await asyncio.sleep(min(float(retry_after), 3.0))
                 resp2 = await client.get(url, headers=headers)
                 if resp2.status_code == 200:
-                    data = resp2.json()
-                    flags = data.get("public_flags", 0) or 0
-                    avatar_hash = data.get("avatar")
-                    discriminator = data.get("discriminator", "0")
-                    avatar_url = build_avatar_url(user_id, avatar_hash, discriminator)
-                    banner_hash = data.get("banner")
-                    banner_url = build_banner_url(user_id, banner_hash)
-                    accent_color = data.get("accent_color")
-                    banner_color = data.get("banner_color")
-                    if not banner_color and accent_color is not None:
-                        banner_color = f"#{accent_color:06x}"
-
-                    profile = DiscordProfile(
-                        id=str(data.get("id", user_id)),
-                        username=data.get("username", ""),
-                        global_name=data.get("global_name"),
-                        discriminator=discriminator,
-                        avatar_hash=avatar_hash,
-                        avatar_url=avatar_url,
-                        banner_hash=banner_hash,
-                        banner_url=banner_url,
-                        accent_color=accent_color,
-                        banner_color=banner_color,
-                        public_flags=flags,
-                        badges=decode_discord_badges(flags),
-                        bot=bool(data.get("bot", False)),
-                        system=bool(data.get("system", False)),
-                        reverse_image_urls=generate_reverse_image_urls(avatar_url),
-                    )
+                    profile = parse_discord_profile_payload(resp2.json(), user_id)
                     return profile, "success", None
                 return (
                     None,

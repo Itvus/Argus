@@ -11,6 +11,7 @@ from typing import Callable, Optional, Tuple
 
 import httpx
 
+from argus import __version__
 from argus.models import IntelXRecord, IntelXReport, ModuleStatus
 
 ProgressCallback = Callable[[str, int, int, str], None]
@@ -42,7 +43,7 @@ async def query_intelx(
         )
 
     headers = {
-        "User-Agent": "argus-osint/0.1.0 (+https://github.com/argus)",
+        "User-Agent": f"argus/{__version__} (+https://github.com/Itvus/Argus)",
         "Accept": "application/json",
         "Content-Type": "application/json",
         "x-key": api_key.strip(),
@@ -78,49 +79,56 @@ async def query_intelx(
                     message="No search task ID returned by IntelX",
                 )
 
-            # Wait briefly for results to populate
-            await asyncio.sleep(1.0)
-
-            # Step 2: Fetch results
+            # Step 2: Bounded polling for results (up to 4 attempts)
+            records: list[IntelXRecord] = []
             res_url = f"https://2.intelx.io/phonebook/search/result?id={search_id}&limit=15"
-            res_resp = await client.get(res_url, headers=headers)
-            if res_resp.status_code == 200:
-                res_data = res_resp.json()
-                selectors_raw = res_data.get("selectors", [])
-                records: list[IntelXRecord] = []
-                for s in selectors_raw:
-                    val = s.get("selectorvalue") or s.get("selector") or ""
-                    if val:
-                        records.append(
-                            IntelXRecord(
-                                system_id=search_id,
-                                name=val,
-                                media_type=str(s.get("selectortype")),
-                            )
-                        )
+            last_status = 200
+            for attempt in range(4):
+                if attempt > 0:
+                    await asyncio.sleep(1.0)
+                res_resp = await client.get(res_url, headers=headers)
+                last_status = res_resp.status_code
+                if res_resp.status_code == 200:
+                    res_data = res_resp.json()
+                    selectors_raw = res_data.get("selectors", [])
+                    status_code = res_data.get("status")
+                    if selectors_raw:
+                        for s in selectors_raw:
+                            val = s.get("selectorvalue") or s.get("selector") or ""
+                            if val:
+                                records.append(
+                                    IntelXRecord(
+                                        system_id=search_id,
+                                        name=val,
+                                        media_type=str(s.get("selectortype")),
+                                    )
+                                )
+                        break
+                    if status_code in (2, 3):
+                        break
 
-                report = IntelXReport(
-                    query=clean_selector,
-                    total_results=len(records),
-                    records=records,
+            report = IntelXReport(
+                query=clean_selector,
+                total_results=len(records),
+                records=records,
+            )
+            if records:
+                return report, ModuleStatus(
+                    module_name="Intelligence X",
+                    status="success",
+                    message=f"Discovered {len(records)} darknet/leak selector(s)",
                 )
-                if records:
-                    return report, ModuleStatus(
-                        module_name="Intelligence X",
-                        status="success",
-                        message=f"Discovered {len(records)} darknet/leak selector(s)",
-                    )
-                else:
-                    return report, ModuleStatus(
-                        module_name="Intelligence X",
-                        status="no_hits",
-                        message=f"No Intelligence X records found for '{clean_selector}'",
-                    )
-            else:
+            elif last_status != 200:
                 return None, ModuleStatus(
                     module_name="Intelligence X",
                     status="no_hits",
-                    message=f"IntelX result fetch status: {res_resp.status_code}",
+                    message=f"IntelX result fetch status: {last_status}",
+                )
+            else:
+                return report, ModuleStatus(
+                    module_name="Intelligence X",
+                    status="no_hits",
+                    message=f"No Intelligence X records found for '{clean_selector}'",
                 )
 
     except Exception as ex:

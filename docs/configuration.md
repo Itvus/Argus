@@ -14,6 +14,7 @@ Argus loads configuration values sequentially from:
 | `HIBP_API_KEY` | Optional | Have I Been Pwned API key for email breach checks. |
 | `LEAKCHECK_API_KEY` | Optional | LeakCheck API key alternative for breach exposure lookups. |
 | `GITHUB_TOKEN` | Optional | GitHub personal access token to raise rate limits from 60 to 5,000 req/hr. |
+| `INTELX_API_KEY` | Optional | Intelligence X API key for searching darknet and public breach selectors. |
 
 ### Verifying Configuration
 

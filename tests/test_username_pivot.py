@@ -220,3 +220,29 @@ def test_extract_leads_from_text():
     assert "https://discord.gg/cyber-defense" in leads.discovered_invites
     assert any(c.network == "Bitcoin" for c in leads.discovered_crypto)
     assert any(m.platform == "Session" for m in leads.discovered_messaging)
+
+
+def test_get_base_domain_and_subdomain_email_filtering():
+    from argus.modules.username_pivot import get_base_domain, clean_emails
+
+    # Base domain parsing across apex domains, multi-level subdomains, and ccTLDs
+    assert get_base_domain("https://example.com") == "example.com"
+    assert get_base_domain("https://blog.example.com/user/alice") == "example.com"
+    assert get_base_domain("http://dev.community.site.co.uk/profile") == "site.co.uk"
+    assert get_base_domain("https://www.github.com/foo") == "github.com"
+    assert get_base_domain("https://member.portal.agency.org.au") == "agency.org.au"
+
+    # clean_emails should filter out site emails matching apex domain even if on subdomains
+    raw_emails = [
+        "target@proton.me",
+        "support@blog.example.com",
+        "staff@mail.example.com",
+        "contact@example.com",
+        "researcher@external-service.org",
+    ]
+    cleaned = clean_emails(raw_emails, site_url="https://blog.example.com/u/target")
+    assert "target@proton.me" in cleaned
+    assert "researcher@external-service.org" in cleaned
+    assert "support@blog.example.com" not in cleaned
+    assert "staff@mail.example.com" not in cleaned
+    assert "contact@example.com" not in cleaned

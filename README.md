@@ -4,7 +4,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/tests-30%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-75%2B%20passed-brightgreen.svg)](tests/)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 
 [Features](#key-features) • [Architecture](#architecture) • [Current Capabilities & Roadmap](#current-capabilities--roadmap) • [Installation](#installation) • [Usage](#usage) • [Configuration](#configuration) • [Documentation](docs/)

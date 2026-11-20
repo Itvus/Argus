@@ -74,3 +74,30 @@ async def test_fetch_discord_profile_missing_token():
     assert profile is None
     assert status == "skipped"
     assert "not configured" in msg
+
+
+def test_parse_discord_profile_payload():
+    from argus.modules.discord_api import parse_discord_profile_payload
+
+    payload = {
+        "id": "155149108183695360",
+        "username": "investigator",
+        "global_name": "Senior Investigator",
+        "discriminator": "0",
+        "avatar": "3b169543e5828de3176ef109282b0e69",
+        "banner": "banner12345",
+        "accent_color": 16711680,
+        "public_flags": 4194305,  # 1 (Staff) + 4194304 (Active Developer)
+        "bot": False,
+        "bio": "Lead researcher. Contact at lead@threatintel.org",
+    }
+
+    profile = parse_discord_profile_payload(payload, "155149108183695360")
+    assert profile.id == "155149108183695360"
+    assert profile.username == "investigator"
+    assert profile.global_name == "Senior Investigator"
+    assert profile.banner_color == "#ff0000"
+    assert "Discord Staff" in profile.badges
+    assert "Active Developer" in profile.badges
+    assert profile.bio == "Lead researcher. Contact at lead@threatintel.org"
+    assert "3b169543e5828de3176ef109282b0e69" in profile.avatar_url

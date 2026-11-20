@@ -351,52 +351,61 @@ class InvestigationOrchestrator:
         )
 
         # Chained Pivot: If Discord Snowflake IDs were discovered during sweep, decode them
-        if report.pivot_leads.discovered_discord_ids and not report.snowflake:
-            lead_id = report.pivot_leads.discovered_discord_ids[0]
-            if progress_callback:
-                progress_callback(
-                    "Chained Snowflake Pivot",
-                    0,
-                    1,
-                    f"Found Discord ID: {lead_id} in profile leads",
-                )
-            try:
-                report.snowflake = decode_snowflake(lead_id)
-                report.module_statuses.append(
-                    ModuleStatus(
-                        module_name="Snowflake Decoder (Pivot Lead)",
-                        status="success",
-                        message=f"Decoded lead ID {lead_id} (Created {report.snowflake.created_at_utc})",
+        if report.pivot_leads.discovered_discord_ids:
+            for extra_id in report.pivot_leads.discovered_discord_ids:
+                try:
+                    sf_meta = decode_snowflake(extra_id)
+                    if not report.snowflake:
+                        report.snowflake = sf_meta
+                        report.module_statuses.append(
+                            ModuleStatus(
+                                module_name="Snowflake Decoder (Pivot Lead)",
+                                status="success",
+                                message=f"Decoded lead ID {extra_id} (Created {sf_meta.created_at_utc})",
+                            )
+                        )
+                    else:
+                        note = f"Discovered additional Discord Snowflake ID: {extra_id} (Created {sf_meta.created_at_utc})"
+                        if note not in report.pivot_leads.notes:
+                            report.pivot_leads.notes.append(note)
+                except Exception:
+                    pass
+
+            if not report.discord_profile:
+                lead_id = report.pivot_leads.discovered_discord_ids[0]
+                if progress_callback:
+                    progress_callback(
+                        "Chained Snowflake Pivot",
+                        0,
+                        1,
+                        f"Found Discord ID: {lead_id} in profile leads",
                     )
+
+                # Query Discord profile and CordCat for this discovered ID
+                d_prof, d_stat, d_m = await fetch_discord_profile(
+                    user_id=lead_id,
+                    bot_token=self.config.discord_bot_token,
+                    timeout=self.config.timeout,
+                    proxy=self.config.proxy,
+                    progress_callback=progress_callback,
                 )
-            except Exception:
-                pass
+                report.discord_profile = d_prof
+                report.module_statuses.append(
+                    ModuleStatus(module_name="Discord API (Pivot Lead)", status=d_stat, message=d_m)
+                )
+                if d_prof and d_prof.bio:
+                    d_leads = extract_leads_from_text(d_prof.bio)
+                    self._merge_leads(report.pivot_leads, d_leads)
 
-            # Query Discord profile and CordCat for this discovered ID
-            d_prof, d_stat, d_m = await fetch_discord_profile(
-                user_id=lead_id,
-                bot_token=self.config.discord_bot_token,
-                timeout=self.config.timeout,
-                proxy=self.config.proxy,
-                progress_callback=progress_callback,
-            )
-            report.discord_profile = d_prof
-            report.module_statuses.append(
-                ModuleStatus(module_name="Discord API (Pivot Lead)", status=d_stat, message=d_m)
-            )
-            if d_prof and d_prof.bio:
-                d_leads = extract_leads_from_text(d_prof.bio)
-                self._merge_leads(report.pivot_leads, d_leads)
-
-            cord_rec, c_stat = await query_cordcat(
-                user_id=lead_id,
-                api_key=self.config.cordcat_api_key,
-                timeout=self.config.timeout,
-                proxy=self.config.proxy,
-                progress_callback=progress_callback,
-            )
-            report.cordcat = cord_rec
-            report.module_statuses.append(c_stat)
+                cord_rec, c_stat = await query_cordcat(
+                    user_id=lead_id,
+                    api_key=self.config.cordcat_api_key,
+                    timeout=self.config.timeout,
+                    proxy=self.config.proxy,
+                    progress_callback=progress_callback,
+                )
+                report.cordcat = cord_rec
+                report.module_statuses.append(c_stat)
 
     async def _run_username_pivot_flow(
         self,

@@ -101,22 +101,22 @@ Fix: `json.dumps(...).replace("<", "\\u003c")` (and `>` / `&` for depth). Note t
 
 ## 2. Latent bugs and correctness risks
 
-| ID | Severity | Location | Issue |
-|---|---|---|---|
-| BUG-05 | Medium | `argus/modules/username_pivot.py:149` | `get_base_domain` docstring promises "without www or subdomains" but only strips `www.`; site mailboxes on `mail.example.com` evade the platform-email filter. |
-| BUG-06 | Medium | `argus/modules/wayback.py:47` | CDX API is queried over plaintext `http://` and the target URL is interpolated without `urllib.parse.quote` — MITM surface plus query-parameter injection. |
-| BUG-07 | Medium | `argus/modules/intelx.py:75` | `await asyncio.sleep(1.0)` then a single result fetch — a race that silently yields false "no hits"; no retry or backoff. |
-| BUG-08 | Medium | `argus/orchestrator.py:520-575` | After the parallel phase, Hudson Rock, OpenPGP, RDAP/crt.sh and Holehe (120+ modules per address) run sequentially per email. Three discovered emails turn a fast scan into minutes. |
-| BUG-09 | Medium | `argus/**` (39 sites) | 24 `except Exception: ... pass` blocks make network/parse failures indistinguishable from genuine "no hits" in `module_statuses`. `logger.warning` output in `run_username_pivot` is never surfaced (no handler configured). |
-| BUG-10 | Low | `argus/modules/snowflake.py` | `decode_snowflake` accepts any 17–20 digit integer without an epoch sanity check; only `is_valid_snowflake` validates, so direct callers on pivot leads can produce absurd dates. |
-| BUG-11 | Low | `argus/orchestrator.py` (chained pivot) | Only `discovered_discord_ids[0]` is decoded and queried; additional collected IDs are dropped. |
-| BUG-12 | Low | `argus/modules/discord_api.py:120-200` | ~40 lines of profile parsing duplicated between the 200 and 429 retry branches; retries once, ignores `X-RateLimit-Global` and `X-RateLimit-Scope`. |
-| BUG-13 | Low | `argus/modules/username_pivot.py:736` | `done_count += 1` from concurrent tasks — progress totals can overshoot. |
-| BUG-14 | Low | `argus/modules/enrichment.py:45`, `discord_api.py:109` | `User-Agent` hardcodes `argus/0.1.0` and a placeholder URL `+https://github.com/argus`. |
-| BUG-15 | Low | `argus/config.py` | Only uppercase `HTTP_PROXY`/`HTTPS_PROXY` are honored; the lowercase form common on Linux/macOS is ignored. |
-| BUG-16 | Low | `argus/report_html.py:1878` | `view_html_report` writes with `NamedTemporaryFile(delete=False)` and never cleans up; temporary reports accumulate in `%TEMP%`. |
-| BUG-17 | Low | `argus/compat.py` | Process-wide monkeypatch of the private `_ProactorBasePipeTransport._call_connection_lost`; setting `_called_connection_lost = True` and `_sock = None` can hide non-reset OSErrors and leave transports inconsistent. |
-| BUG-18 | Low | working tree | Uncommitted changes to `argus/models.py` and `argus/modules/snowflake.py` add `DiscordProfile.bio` and `SteamProfile.summary`, which no module populates yet. |
+| ID | Severity | Location | Issue | Status |
+|---|---|---|---|---|
+| BUG-05 | Medium | `argus/modules/username_pivot.py:149` | `get_base_domain` docstring promises "without www or subdomains" but only strips `www.`; site mailboxes on `mail.example.com` evade the platform-email filter. | Resolved (apex domain parsing across subdomains/ccTLDs; verified in `tests/test_username_pivot.py`) |
+| BUG-06 | Medium | `argus/modules/wayback.py:47` | CDX API is queried over plaintext `http://` and the target URL is interpolated without `urllib.parse.quote` — MITM surface plus query-parameter injection. | Resolved (HTTPS with URL encoding; verified in `tests/test_wayback.py`) |
+| BUG-07 | Medium | `argus/modules/intelx.py:75` | `await asyncio.sleep(1.0)` then a single result fetch — a race that silently yields false "no hits"; no retry or backoff. | Resolved (bounded polling with up to 4 attempts; verified in `tests/test_intelx.py`) |
+| BUG-08 | Medium | `argus/orchestrator.py:520-575` | After the parallel phase, Hudson Rock, OpenPGP, RDAP/crt.sh and Holehe (120+ modules per address) run sequentially per email. Three discovered emails turn a fast scan into minutes. | Resolved (multi-email sweep parallelized via `asyncio.gather`) |
+| BUG-09 | Medium | `argus/**` (39 sites) | 24 `except Exception: ... pass` blocks make network/parse failures indistinguishable from genuine "no hits" in `module_statuses`. `logger.warning` output in `run_username_pivot` is never surfaced (no handler configured). | Open |
+| BUG-10 | Low | `argus/modules/snowflake.py` | `decode_snowflake` accepts any 17–20 digit integer without an epoch sanity check; only `is_valid_snowflake` validates, so direct callers on pivot leads can produce absurd dates. | Resolved (epoch sanity check added; verified in `tests/test_snowflake.py`) |
+| BUG-11 | Low | `argus/orchestrator.py` (chained pivot) | Only `discovered_discord_ids[0]` is decoded and queried; additional collected IDs are dropped. | Resolved (all discovered IDs decoded into leads; verified in `tests/test_orchestrator.py`) |
+| BUG-12 | Low | `argus/modules/discord_api.py:120-200` | ~40 lines of profile parsing duplicated between the 200 and 429 retry branches; retries once, ignores `X-RateLimit-Global` and `X-RateLimit-Scope`. | Resolved (`parse_discord_profile_payload` helper; verified in `tests/test_discord_api.py`) |
+| BUG-13 | Low | `argus/modules/username_pivot.py:736` | `done_count += 1` from concurrent tasks — progress totals can overshoot. | Resolved (`asyncio.Lock()` protects counter) |
+| BUG-14 | Low | `argus/modules/enrichment.py:45`, `discord_api.py:109` | `User-Agent` hardcodes `argus/0.1.0` and a placeholder URL `+https://github.com/argus`. | Resolved (dynamic `__version__` and repository URL) |
+| BUG-15 | Low | `argus/config.py` | Only uppercase `HTTP_PROXY`/`HTTPS_PROXY` are honored; the lowercase form common on Linux/macOS is ignored. | Resolved (lowercase proxy env vars supported) |
+| BUG-16 | Low | `argus/report_html.py:1878` | `view_html_report` writes with `NamedTemporaryFile(delete=False)` and never cleans up; temporary reports accumulate in `%TEMP%`. | Open |
+| BUG-17 | Low | `argus/compat.py` | Process-wide monkeypatch of the private `_ProactorBasePipeTransport._call_connection_lost`; setting `_called_connection_lost = True` and `_sock = None` can hide non-reset OSErrors and leave transports inconsistent. | Open |
+| BUG-18 | Low | working tree | Uncommitted changes to `argus/models.py` and `argus/modules/snowflake.py` add `DiscordProfile.bio` and `SteamProfile.summary`, which no module populates yet. | Resolved (populated and wired into lead extraction) |
 
 ---
 

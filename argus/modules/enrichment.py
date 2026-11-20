@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional, Tuple
 
 import httpx
 
+from argus import __version__
 from argus.models import (
     BreachRecord,
     CordCatRecord,
@@ -42,7 +43,7 @@ async def query_cordcat(
 
     headers = {
         "X-API-Key": api_key.strip(),
-        "User-Agent": "argus/0.1.0 (OSINT tool)",
+        "User-Agent": f"argus/{__version__} (+https://github.com/Itvus/Argus)",
         "Accept": "application/json",
     }
     url = f"https://api.cord.cat/v2/query/{user_id}"
@@ -293,7 +294,7 @@ async def fetch_github_pivot(
     """Audit a GitHub profile and public commit events with live progress reporting."""
     clean_username = username.lstrip("@").strip()
     headers = {
-        "User-Agent": "argus-osint/0.1.0 (+https://github.com/argus)",
+        "User-Agent": f"argus/{__version__} (+https://github.com/Itvus/Argus)",
         "Accept": "application/vnd.github.v3+json",
     }
     if github_token and github_token.strip():

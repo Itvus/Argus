@@ -147,3 +147,60 @@ async def test_orchestrator_package_email_chaining(mock_config: Config):
         report = await orchestrator.run_investigation("dev_author")
 
     assert "author@domain.org" in report.pivot_leads.discovered_emails
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_multi_snowflake_pivot_leads(mock_config: Config):
+    """Verify multiple discovered Discord Snowflake IDs in pivot leads are all decoded."""
+    from argus.models import PivotLeads
+
+    orchestrator = InvestigationOrchestrator(mock_config)
+    leads = PivotLeads(discovered_discord_ids=["155149108183695360", "251005447920758264"])
+
+    with unittest.mock.patch(
+        "argus.orchestrator.run_username_pivot",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], leads, "Found leads"),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_github_pivot",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="GitHub", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_gaming_profiles",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="Gaming", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_hudson_rock_intel",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="Hudson Rock", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.lookup_keybase",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="Keybase", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_package_registries",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], ModuleStatus(module_name="Packages", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_wayback_snapshots",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], ModuleStatus(module_name="Wayback", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_and_hash_avatars",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], []),
+    ), unittest.mock.patch(
+        "argus.orchestrator.fetch_discord_profile",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, "skipped", "No bot token"),
+    ), unittest.mock.patch(
+        "argus.orchestrator.query_cordcat",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="CordCat", status="skipped")),
+    ):
+        report = await orchestrator.run_investigation("alice")
+
+    assert report.snowflake is not None
+    assert report.snowflake.snowflake_id == 155149108183695360
+    # Second snowflake ID should be preserved in pivot leads notes
+    assert any("251005447920758264" in note for note in report.pivot_leads.notes)
