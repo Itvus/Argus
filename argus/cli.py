@@ -157,6 +157,25 @@ def render_report_rich(report: InvestigationReport) -> None:
         )
     )
 
+    # 1b. Identity Correlation & Confidence Assessment
+    if report.correlation:
+        corr = report.correlation
+        color = "green" if corr.confidence_level == "HIGH" else ("yellow" if corr.confidence_level == "MEDIUM" else "red")
+        reasons_text = "\n".join(f"• {r}" for r in corr.reasons)
+        corr_table = Table.grid(padding=(0, 2))
+        corr_table.add_column(style="bold white", width=22)
+        corr_table.add_column()
+        corr_table.add_row("Confidence Rating:", f"[{color} bold]{corr.confidence_score}% ({corr.confidence_level})[/{color} bold]")
+        corr_table.add_row("Correlation Evidence:", reasons_text)
+        console.print(
+            Panel(
+                corr_table,
+                title=f"[{color} bold]Target Identity Correlation & Confidence Assessment[/{color} bold]",
+                border_style=color,
+                box=box.ROUNDED,
+            )
+        )
+
     # 2. Discord Snowflake Analysis
     if report.snowflake:
         sf = report.snowflake
@@ -407,6 +426,86 @@ def render_report_rich(report: InvestigationReport) -> None:
                 )
             )
 
+    # 7c. Cross-Platform Avatar Perceptual Hash Matches
+    if report.avatar_matches:
+        match_table = Table(box=box.SIMPLE_HEAVY, border_style="bright_magenta", show_header=True)
+        match_table.add_column("Source Platform", style="bold cyan")
+        match_table.add_column("Matched Platform", style="bold magenta")
+        match_table.add_column("Bit Distance", style="bold green", justify="center")
+        match_table.add_column("Visual Correlation Verdict", style="white")
+
+        for m in report.avatar_matches:
+            verdict = "[bold green]Identical Avatar[/bold green]" if m.hamming_distance == 0 else f"[green]Perceptual Match ({m.hamming_distance}/64 bits diff)[/green]"
+            match_table.add_row(m.platform_a, m.platform_b, str(m.hamming_distance), verdict)
+
+        console.print(
+            Panel(
+                match_table,
+                title=f"[bold bright_magenta]Avatar Perceptual Hash Matches ({len(report.avatar_matches)})[/bold bright_magenta]",
+                border_style="bright_magenta",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7d. Hudson Rock Infostealer Intelligence
+    if report.hudson_rock:
+        hr_infections = [inf for r in report.hudson_rock for inf in r.infections]
+        if hr_infections:
+            hr_table = Table(box=box.SIMPLE_HEAVY, border_style="red", show_header=True)
+            hr_table.add_column("Malware Family", style="bold red")
+            hr_table.add_column("Compromise Date", style="white")
+            hr_table.add_column("Computer / OS", style="dim white")
+            hr_table.add_column("Compromised Logins Sample", style="yellow")
+
+            for inf in hr_infections:
+                comp_os = f"{inf.computer_name or 'N/A'} ({inf.operating_system or 'N/A'})"
+                logins = ", ".join(inf.top_logins[:4]) if inf.top_logins else "N/A"
+                hr_table.add_row(inf.stealer_family or "Unknown", inf.date_compromised or "N/A", comp_os, logins)
+
+            console.print(
+                Panel(
+                    hr_table,
+                    title=f"[bold red]Hudson Rock Infostealer Malware Compromises ({len(hr_infections)})[/bold red]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
+
+    # 7e. Pre-Computed Google Dorks (Opt-in)
+    if report.dorks:
+        dork_table = Table(box=box.SIMPLE, show_header=True)
+        dork_table.add_column("Category", style="bold cyan", width=26)
+        dork_table.add_column("Search Dork & URL", style="white")
+
+        for d in report.dorks:
+            dork_table.add_row(d.category, f"{d.query}\n[dim underline]{d.url}[/dim underline]")
+
+        console.print(
+            Panel(
+                dork_table,
+                title=f"[bold cyan]Pre-Computed Google Dorks ({len(report.dorks)})[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
+
+    # 7f. Intelligence X Darknet Records (Opt-in)
+    if report.intelx and report.intelx.records:
+        ix_table = Table(box=box.SIMPLE, show_header=True)
+        ix_table.add_column("Selector Name", style="bold white")
+        ix_table.add_column("Type", style="dim cyan")
+        for r in report.intelx.records[:10]:
+            ix_table.add_row(r.name, r.media_type or "N/A")
+
+        console.print(
+            Panel(
+                ix_table,
+                title=f"[bold purple]Intelligence X Darknet & Leak Archive Hits ({len(report.intelx.records)})[/bold purple]",
+                border_style="purple",
+                box=box.ROUNDED,
+            )
+        )
+
     # 8. Aggregated Pivot Leads
     leads = report.pivot_leads
     has_leads = (
@@ -494,6 +593,17 @@ def scan_command(
         "-E",
         help="Check account registration on all 120+ platforms for discovered emails (Holehe).",
     ),
+    dorks: bool = typer.Option(
+        False,
+        "--dorks",
+        "-D",
+        help="Generate pre-computed Google Dork URLs targeting public pastes, configs, and leaks.",
+    ),
+    intelx: bool = typer.Option(
+        False,
+        "--intelx",
+        help="Query Intelligence X darknet archives and public data leaks.",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -545,6 +655,8 @@ def scan_command(
                 pivot=pivot,
                 all_sites=all_sites,
                 email_sites=email_sites,
+                dorks=dorks,
+                intelx=intelx,
                 progress_callback=None,
             )
         )
@@ -558,6 +670,8 @@ def scan_command(
                 pivot=pivot,
                 all_sites=all_sites,
                 email_sites=email_sites,
+                dorks=dorks,
+                intelx=intelx,
                 progress_callback=cb,
             )
 
@@ -775,6 +889,17 @@ def tui_command(
         "-E",
         help="Check account registration on all 120+ platforms for discovered emails (Holehe).",
     ),
+    dorks: bool = typer.Option(
+        False,
+        "--dorks",
+        "-D",
+        help="Generate pre-computed Google Dork URLs.",
+    ),
+    intelx: bool = typer.Option(
+        False,
+        "--intelx",
+        help="Query Intelligence X darknet archives and public data leaks.",
+    ),
     proxy: Optional[str] = typer.Option(
         None,
         "--proxy",
@@ -824,6 +949,8 @@ def tui_command(
                 pivot=pivot,
                 all_sites=all_sites,
                 email_sites=email_sites,
+                dorks=dorks,
+                intelx=intelx,
                 progress_callback=cb,
             )
 
@@ -914,6 +1041,8 @@ def man_command(
     opt_table.add_row("-p, --pivot", "Automatically pivot into cross-platform username sweep when scanning a Snowflake ID.")
     opt_table.add_row("-a, --all-sites", "Check all sites in the Maigret database instead of top-ranked dev/gaming platforms.")
     opt_table.add_row("-E, --email-sites", "Check account registrations on all 120+ platforms for discovered emails via Holehe.")
+    opt_table.add_row("-D, --dorks", "Generate pre-computed Google Dork URLs targeting pastes, leaks, and docs.")
+    opt_table.add_row("--intelx", "Query Intelligence X darknet archives and public data leaks.")
     opt_table.add_row("-j, --json", "Output raw formatted JSON to stdout for pipelines or jq.")
     opt_table.add_row("-o, --out <PATH>", "Save structured JSON investigation report to file.")
     opt_table.add_row("-H, --html <PATH>", "Save standalone HTML investigation report to file.")

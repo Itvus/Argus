@@ -7,6 +7,7 @@ and aggregation into an InvestigationReport.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -17,10 +18,15 @@ from argus.models import (
     ModuleStatus,
     PivotLeads,
 )
+from argus.modules.avatar_hash import fetch_and_hash_avatars
+from argus.modules.correlation import calculate_correlation_score
 from argus.modules.discord_api import fetch_discord_profile
+from argus.modules.dorks import generate_google_dorks
 from argus.modules.email_recon import check_email_registrations
 from argus.modules.enrichment import check_breaches, fetch_github_pivot, query_cordcat
 from argus.modules.gaming import fetch_gaming_profiles
+from argus.modules.hudson_rock import fetch_hudson_rock_intel
+from argus.modules.intelx import query_intelx
 from argus.modules.snowflake import decode_snowflake, is_valid_snowflake
 from argus.modules.username_pivot import run_username_pivot
 
@@ -40,6 +46,8 @@ class InvestigationOrchestrator:
         pivot: bool = False,
         all_sites: bool = False,
         email_sites: bool = False,
+        dorks: bool = False,
+        intelx: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> InvestigationReport:
         """Run complete investigation on target (Snowflake ID, username, or email)."""
@@ -84,6 +92,59 @@ class InvestigationOrchestrator:
                 email_sites=email_sites,
                 progress_callback=progress_callback,
             )
+
+        # -------------------------------------------------------------
+        # S-Tier Base 2: Cross-Platform Avatar Perceptual Hashing (dHash)
+        # -------------------------------------------------------------
+        avatar_sources: list[tuple[str, str]] = []
+        if report.discord_profile and report.discord_profile.avatar_url:
+            avatar_sources.append(("Discord", report.discord_profile.avatar_url))
+        if report.gaming and report.gaming.steam and report.gaming.steam.avatar_url:
+            avatar_sources.append(("Steam", report.gaming.steam.avatar_url))
+        if report.github_pivot and report.github_pivot.username:
+            avatar_sources.append(("GitHub", f"https://avatars.githubusercontent.com/{report.github_pivot.username}"))
+        for em in report.pivot_leads.discovered_emails:
+            gravatar_hash = hashlib.md5(em.strip().lower().encode("utf-8")).hexdigest()
+            avatar_sources.append((f"Gravatar ({em})", f"https://www.gravatar.com/avatar/{gravatar_hash}?d=404"))
+
+        if avatar_sources:
+            hashes, matches = await fetch_and_hash_avatars(
+                avatar_sources=avatar_sources,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            report.avatar_hashes.extend(hashes)
+            report.avatar_matches.extend(matches)
+
+        # -------------------------------------------------------------
+        # S-Tier Base 3: Algorithmic Correlation & Confidence Scoring
+        # -------------------------------------------------------------
+        report.correlation = calculate_correlation_score(report)
+
+        # -------------------------------------------------------------
+        # B-Tier Flag 1: Google Dork Pre-Computed Search Links
+        # -------------------------------------------------------------
+        if dorks:
+            report.dorks = generate_google_dorks(
+                target=clean_target,
+                emails=report.pivot_leads.discovered_emails,
+            )
+
+        # -------------------------------------------------------------
+        # B-Tier Flag 2: Intelligence X Darknet & Leak Archive Lookup
+        # -------------------------------------------------------------
+        if intelx or self.config.intelx_api_key:
+            ix_report, ix_status = await query_intelx(
+                selector=clean_target,
+                api_key=self.config.intelx_api_key,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            if ix_report:
+                report.intelx = ix_report
+            report.module_statuses.append(ix_status)
 
         report.scan_duration_seconds = round(time.monotonic() - start_time, 2)
         if progress_callback:
@@ -311,9 +372,16 @@ class InvestigationOrchestrator:
             proxy=self.config.proxy,
             progress_callback=progress_callback,
         )
+        hudson_task = fetch_hudson_rock_intel(
+            query=username,
+            query_type="username",
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
 
-        (sweep_res, github_res, gaming_res) = await asyncio.gather(
-            sweep_task, github_task, gaming_task, return_exceptions=True
+        (sweep_res, github_res, gaming_res, hudson_res) = await asyncio.gather(
+            sweep_task, github_task, gaming_task, hudson_task, return_exceptions=True
         )
 
         # Process Maigret sweep results
@@ -345,7 +413,14 @@ class InvestigationOrchestrator:
             report.gaming = gaming_data
             report.module_statuses.append(gaming_status)
 
-        # 2. Automated Pivot into Breach Databases
+        # Process Hudson Rock infostealer results
+        if isinstance(hudson_res, tuple) and len(hudson_res) == 2:
+            hr_data, hr_status = hudson_res
+            if hr_data and hr_data.total_stealers > 0:
+                report.hudson_rock.append(hr_data)
+            report.module_statuses.append(hr_status)
+
+        # 2. Automated Pivot into Breach Databases & Infostealer Intelligence
         all_emails = list(set(report.pivot_leads.discovered_emails))
         if all_emails:
             breaches, b_status = await check_breaches(
@@ -358,6 +433,19 @@ class InvestigationOrchestrator:
             )
             report.breaches.extend(breaches)
             report.module_statuses.append(b_status)
+
+            # Query Hudson Rock for discovered emails
+            for em in all_emails:
+                em_hr_data, em_hr_status = await fetch_hudson_rock_intel(
+                    query=em,
+                    query_type="email",
+                    timeout=self.config.timeout,
+                    proxy=self.config.proxy,
+                    progress_callback=progress_callback,
+                )
+                if em_hr_data and em_hr_data.total_stealers > 0:
+                    report.hudson_rock.append(em_hr_data)
+                report.module_statuses.append(em_hr_status)
         else:
             report.module_statuses.append(
                 ModuleStatus(

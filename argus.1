@@ -6,7 +6,7 @@ argus \- fast, modular OSINT CLI tool for Discord Snowflakes, usernames, and cro
 [\fB\-v\fR|\fB\-\-version\fR] [\fB\-h\fR|\fB\-\-help\fR] \fICOMMAND\fR [\fIARGS\fR]...
 .br
 .B argus scan
-[\fB\-p\fR|\fB\-\-pivot\fR] [\fB\-a\fR|\fB\-\-all\-sites\fR] [\fB\-E\fR|\fB\-\-email\-sites\fR] [\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-H\fR|\fB\-\-html\fR \fIFILE\fR] [\fB\-w\fR|\fB\-\-view\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fITARGET\fR
+[\fB\-p\fR|\fB\-\-pivot\fR] [\fB\-a\fR|\fB\-\-all\-sites\fR] [\fB\-E\fR|\fB\-\-email\-sites\fR] [\fB\-D\fR|\fB\-\-dorks\fR] [\fB\-\-intelx\fR] [\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-H\fR|\fB\-\-html\fR \fIFILE\fR] [\fB\-w\fR|\fB\-\-view\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fITARGET\fR
 .br
 .B argus snowflake
 [\fB\-j\fR|\fB\-\-json\fR] [\fB\-o\fR|\fB\-\-out\fR \fIFILE\fR] [\fB\-H\fR|\fB\-\-html\fR \fIFILE\fR] [\fB\-w\fR|\fB\-\-view\fR] [\fB\-x\fR|\fB\-\-proxy\fR \fIURL\fR] [\fB\-t\fR|\fB\-\-timeout\fR \fISEC\fR] \fIUSER_ID\fR
@@ -70,6 +70,12 @@ Instructs Maigret to scan all available sites in its database instead of top-ran
 .TP
 .BR \-E ", " \-\-email\-sites
 Probe 120+ platforms via Holehe for registered accounts matching discovered or target emails.
+.TP
+.BR \-D ", " \-\-dorks
+Generate pre-computed Google Dork URLs targeting pastes, leaks, and documents.
+.TP
+.BR \-\-intelx
+Query Intelligence X darknet archives and public leak databases for target selector.
 .TP
 .BR \-j ", " \-\-json
 Output raw formatted JSON to stdout. Disables terminal animations for pipeline compatibility.

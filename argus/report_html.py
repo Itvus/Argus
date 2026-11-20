@@ -554,7 +554,150 @@ def render_html_report(report: InvestigationReport) -> str:
             </div>
             """
 
-    # 6. Raw JSON representation
+    # 7. Cross-Platform Avatar Matches
+    avatar_matches_html = ""
+    if report.avatar_matches:
+        match_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-bold text-cyan">{html.escape(m.platform_a)}</td>
+              <td class="font-bold text-emerald">{html.escape(m.platform_b)}</td>
+              <td class="font-mono" style="text-align: center;"><strong>{m.hamming_distance}</strong> / 64 bits</td>
+              <td>{"<span class='badge badge-cyan'>Identical Match</span>" if m.hamming_distance == 0 else "<span class='badge badge-emerald'>Perceptual Match</span>"}</td>
+            </tr>
+            """
+            for m in report.avatar_matches
+        )
+        avatar_matches_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Cross-Platform Avatar Matches ({len(report.avatar_matches)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Source Platform</th>
+                <th>Matched Platform</th>
+                <th style="text-align: center;">Hamming Distance</th>
+                <th>Correlation Verdict</th>
+              </tr>
+            </thead>
+            <tbody>
+              {match_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 8. Hudson Rock Infostealer Intelligence
+    hudson_rock_html = ""
+    hr_infections = [inf for r in report.hudson_rock for inf in r.infections]
+    if hr_infections:
+        hr_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-bold text-rose">{html.escape(inf.stealer_family or 'Unknown')}</td>
+              <td class="font-mono">{html.escape(inf.date_compromised or 'N/A')}</td>
+              <td>{html.escape(inf.computer_name or 'N/A')} <span class="text-xs text-muted">({html.escape(inf.operating_system or 'N/A')})</span></td>
+              <td class="font-mono text-xs">{html.escape(', '.join(inf.top_logins[:4]) if inf.top_logins else 'N/A')}</td>
+            </tr>
+            """
+            for inf in hr_infections
+        )
+        hudson_rock_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Hudson Rock Infostealer Compromises ({len(hr_infections)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Malware Family</th>
+                <th>Compromise Date</th>
+                <th>Infected Host / OS</th>
+                <th>Sample Compromised Logins</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hr_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 9. Correlation Banner HTML
+    correlation_banner_html = ""
+    if report.correlation:
+        corr = report.correlation
+        badge_cls = "badge-emerald" if corr.confidence_level == "HIGH" else ("badge-amber" if corr.confidence_level == "MEDIUM" else "badge-rose")
+        reasons_list = "".join(f"<li>{html.escape(r)}</li>" for r in corr.reasons)
+        correlation_banner_html = f"""
+        <div class="summary-card" style="margin-bottom: 16px;">
+          <div class="summary-main">
+            <div class="target-row">
+              <span class="font-semibold text-primary">Identity Correlation Confidence:</span>
+              <span class="badge {badge_cls} font-mono">{corr.confidence_score}% ({corr.confidence_level})</span>
+            </div>
+            <ul style="margin-top: 8px; padding-left: 20px; color: var(--text-secondary); font-size: 12px;">
+              {reasons_list}
+            </ul>
+          </div>
+        </div>
+        """
+
+    # 10. Google Dorks HTML (Opt-in)
+    dorks_html = ""
+    if report.dorks:
+        dork_pills = "".join(
+            f"""<div class="lead-pill font-mono">
+                  <span class="tag">{html.escape(d.category)}</span>
+                  <a href="{html.escape(d.url)}" target="_blank" rel="noopener noreferrer" class="link-external">{html.escape(d.query)} {ICON_LINK}</a>
+                </div>"""
+            for d in report.dorks
+        )
+        dorks_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Pre-Computed Google Dorks ({len(report.dorks)})</span>
+          </div>
+          <div class="leads-container">
+            <div class="lead-pills-wrap">{dork_pills}</div>
+          </div>
+        </div>
+        """
+
+    # 11. IntelX HTML (Opt-in)
+    intelx_html = ""
+    if report.intelx and report.intelx.records:
+        ix_rows = "".join(
+            f"""
+            <tr>
+              <td class="font-mono">{html.escape(r.name)}</td>
+              <td><span class="tag">{html.escape(r.media_type or 'Record')}</span></td>
+            </tr>
+            """
+            for r in report.intelx.records
+        )
+        intelx_html = f"""
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">{ICON_SHIELD} Intelligence X Darknet & Leak Archive Hits ({len(report.intelx.records)})</span>
+          </div>
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Record Selector</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ix_rows}
+            </tbody>
+          </table>
+        </div>
+        """
+
+    # 12. Raw JSON representation
     raw_json_str = html.escape(json.dumps(report.model_dump(), indent=2))
 
     # Self-contained CSS (Archetype B: Technical Dense Terminal with clean typography)
@@ -1177,13 +1320,18 @@ def render_html_report(report: InvestigationReport) -> str:
     </div>
 
     <!-- Main Content Flow -->
+    {correlation_banner_html}
     {snowflake_html}
     {profile_html}
     {gaming_html}
     {social_profiles_html}
+    {avatar_matches_html}
     {leads_html}
     {enrichment_html}
+    {hudson_rock_html}
     {email_recon_html}
+    {dorks_html}
+    {intelx_html}
 
     <!-- Raw JSON Collapsible Drawer -->
     <details class="raw-json-drawer">

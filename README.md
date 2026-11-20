@@ -106,7 +106,12 @@ flowchart LR
 | 🔄 **Proxy Support (Tor / SOCKS5 / HTTP)** | ✅ Supported | Configurable `--proxy` / `-x` flag or `ARGUS_PROXY` environment variable |
 | 🎮 **Gaming Ecosystem Pivots** | ✅ Supported | Mojang API Minecraft UUID/skin render and Steam Community XML profiling |
 | 🪙 **Precision Crypto & Messaging Leads** | ✅ Supported | BTC, ETH (with commit filter), SOL, Telegram, Matrix, and Signal extraction |
+| 🛡️ **Hudson Rock Infostealer Intel** | ✅ Supported | Unauthenticated infostealer malware infection & stolen credential analysis |
+| 🖼️ **Cross-Platform Avatar Hashing** | ✅ Supported | 64-bit dHash perceptual matching with Hamming distance visual correlation |
+| 🎯 **Algorithmic Confidence Scoring** | ✅ Supported | Objective 0–100% target correlation score based on multi-vector evidence |
 | 📧 **Email Account Probing (Holehe)** | ✅ Supported | Opt-in `--email-sites` / `-E` flag checking 120+ platforms for registered accounts |
+| 🔍 **Pre-Computed Google Dorks** | ✅ Supported | Opt-in `--dorks` / `-D` flag generating targeted web/paste/leak search URLs |
+| 🌐 **Intelligence X Darknet Search** | ✅ Supported | Opt-in `--intelx` flag for public paste and darknet archive hits |
 | 💻 **Interactive Terminal UI (TUI)** | ✅ Supported | Menu-driven terminal report inspection via `argus tui` / `argus explore` |
 | ⚙️ **Custom Extraction Patterns** | ⏳ Planned | User-defined regex rules in `~/.argus/patterns/` |
 
@@ -212,6 +217,12 @@ argus scan torvalds --email-sites
 
 # Scan an email address directly across 120+ platforms
 argus scan target@example.com --email-sites
+
+# Generate pre-computed Google Dorks targeting pastes, documents, and leaks
+argus scan torvalds --dorks
+
+# Query Intelligence X darknet archives for target selector
+argus scan torvalds --intelx
 
 # Pipe JSON directly into jq
 argus scan torvalds --json | jq .pivot_leads

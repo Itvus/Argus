@@ -41,6 +41,7 @@ class Config:
     hibp_api_key: Optional[str]
     leakcheck_api_key: Optional[str]
     github_token: Optional[str]
+    intelx_api_key: Optional[str] = None
     timeout: int = 15
     proxy: Optional[str] = None
 
@@ -61,6 +62,7 @@ class Config:
             hibp_api_key=os.getenv("HIBP_API_KEY") or None,
             leakcheck_api_key=os.getenv("LEAKCHECK_API_KEY") or None,
             github_token=os.getenv("GITHUB_TOKEN") or None,
+            intelx_api_key=os.getenv("INTELX_API_KEY") or None,
             timeout=timeout,
             proxy=resolved_proxy,
         )

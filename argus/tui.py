@@ -39,6 +39,14 @@ def display_overview_panel(report: InvestigationReport) -> None:
     grid.add_row("Crypto Wallet Addresses:", str(len(report.pivot_leads.discovered_crypto)))
     grid.add_row("Messaging Handles:", str(len(report.pivot_leads.discovered_messaging)))
     grid.add_row("Breach Incidents:", str(len(report.breaches)))
+    total_hr = sum(h.total_stealers for h in report.hudson_rock)
+    if total_hr > 0:
+        grid.add_row("Infostealer Compromises:", f"[bold red]{total_hr}[/bold red]")
+    if report.avatar_matches:
+        grid.add_row("Avatar Perceptual Matches:", f"[bold magenta]{len(report.avatar_matches)}[/bold magenta]")
+    if report.correlation:
+        corr_color = "green" if report.correlation.confidence_level == "HIGH" else ("yellow" if report.correlation.confidence_level == "MEDIUM" else "red")
+        grid.add_row("Identity Confidence:", f"[{corr_color} bold]{report.correlation.confidence_score}% ({report.correlation.confidence_level})[/{corr_color} bold]")
 
     console.print(
         Panel(
@@ -179,6 +187,9 @@ def display_leads_panel(report: InvestigationReport) -> None:
                 recon_lines.append(f"• [cyan]{a.platform}[/cyan] ({a.domain}){rec}")
         if recon_lines:
             tbl.add_row("Email Accounts (Holehe)", "\n".join(recon_lines))
+    if report.avatar_matches:
+        match_lines = [f"• {m.platform_a} <-> {m.platform_b} (distance: {m.hamming_distance}/64 bits)" for m in report.avatar_matches]
+        tbl.add_row("Avatar Matches (dHash)", "\n".join(match_lines))
     if leads.discovered_crypto:
         crypto_lines = [f"[{c.network}] [cyan]{c.address}[/cyan]" for c in leads.discovered_crypto]
         tbl.add_row("Crypto Wallets", "\n".join(crypto_lines))
@@ -272,7 +283,21 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
             g_table.add_row("Timeline vs Discord", gh.age_comparison_discord)
         console.print(Panel(g_table, title="[bold green]GitHub Public Activity Audit[/bold green]", border_style="green", box=box.ROUNDED))
 
-    if not report.cordcat and not report.breaches and not report.github_pivot:
+    # 4. Hudson Rock
+    hr_infections = [inf for r in report.hudson_rock for inf in r.infections]
+    if hr_infections:
+        hr_tbl = Table(box=box.SIMPLE_HEAVY, border_style="red", show_header=True)
+        hr_tbl.add_column("Malware Family", style="bold red")
+        hr_tbl.add_column("Compromise Date", style="white")
+        hr_tbl.add_column("Computer / OS", style="dim white")
+        hr_tbl.add_column("Compromised Logins Sample", style="yellow")
+        for inf in hr_infections:
+            comp_os = f"{inf.computer_name or 'N/A'} ({inf.operating_system or 'N/A'})"
+            logins = ", ".join(inf.top_logins[:4]) if inf.top_logins else "N/A"
+            hr_tbl.add_row(inf.stealer_family or "Unknown", inf.date_compromised or "N/A", comp_os, logins)
+        console.print(Panel(hr_tbl, title=f"[bold red]Hudson Rock Infostealer Malware Compromises ({len(hr_infections)})[/bold red]", border_style="red", box=box.ROUNDED))
+
+    if not report.cordcat and not report.breaches and not report.github_pivot and not report.hudson_rock:
         console.print("[dim]No threat or transparency indexer hits recorded.[/dim]")
 
 

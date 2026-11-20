@@ -145,6 +145,74 @@ class EmailRegistrationReport(BaseModel):
     accounts: list[EmailAccountResult] = Field(default_factory=list)
 
 
+class StealerInfection(BaseModel):
+    """Infostealer malware infection details resolved via Hudson Rock."""
+    stealer_family: Optional[str] = None
+    date_compromised: Optional[str] = None
+    computer_name: Optional[str] = None
+    operating_system: Optional[str] = None
+    ip: Optional[str] = None
+    malware_path: Optional[str] = None
+    top_logins: list[str] = Field(default_factory=list)
+
+
+class HudsonRockReport(BaseModel):
+    """Hudson Rock infostealer cybercrime intelligence report."""
+    query: str
+    query_type: str  # "username" or "email"
+    total_stealers: int = 0
+    total_corporate_services: int = 0
+    total_user_services: int = 0
+    infections: list[StealerInfection] = Field(default_factory=list)
+
+
+class AvatarHash(BaseModel):
+    """Perceptual difference hash (dHash) for an avatar."""
+    platform: str
+    url: str
+    dhash: str
+    dhash_int: int
+
+
+class AvatarMatch(BaseModel):
+    """Confirmed cross-platform avatar perceptual match based on Hamming distance."""
+    platform_a: str
+    url_a: str
+    platform_b: str
+    url_b: str
+    hamming_distance: int  # 0 to 64; <= 5 indicates same image
+    is_match: bool = True
+
+
+class CorrelationScore(BaseModel):
+    """Algorithmic confidence assessment for discovered pivot identity."""
+    confidence_score: int  # 0 - 100
+    confidence_level: str  # "HIGH", "MEDIUM", "LOW"
+    reasons: list[str] = Field(default_factory=list)
+
+
+class GoogleDork(BaseModel):
+    """Pre-computed Google Dork query and clickable search URL."""
+    category: str
+    query: str
+    url: str
+
+
+class IntelXRecord(BaseModel):
+    """Intelligence X selector search record."""
+    system_id: str
+    name: str
+    date: Optional[str] = None
+    media_type: Optional[str] = None
+
+
+class IntelXReport(BaseModel):
+    """Intelligence X darknet and data leak search results."""
+    query: str
+    total_results: int = 0
+    records: list[IntelXRecord] = Field(default_factory=list)
+
+
 class PivotLeads(BaseModel):
     """Aggregated investigative leads discovered during pivoting."""
     discovered_emails: list[str] = Field(default_factory=list)
@@ -177,5 +245,11 @@ class InvestigationReport(BaseModel):
     github_pivot: Optional[GitHubPivotLead] = None
     gaming: Optional[GamingProfiles] = None
     email_registrations: list[EmailRegistrationReport] = Field(default_factory=list)
+    hudson_rock: list[HudsonRockReport] = Field(default_factory=list)
+    avatar_hashes: list[AvatarHash] = Field(default_factory=list)
+    avatar_matches: list[AvatarMatch] = Field(default_factory=list)
+    correlation: Optional[CorrelationScore] = None
+    dorks: list[GoogleDork] = Field(default_factory=list)
+    intelx: Optional[IntelXReport] = None
     pivot_leads: PivotLeads = Field(default_factory=PivotLeads)
     module_statuses: list[ModuleStatus] = Field(default_factory=list)
