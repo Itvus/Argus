@@ -175,6 +175,10 @@ def clean_emails(raw_emails: list[str], site_url: str = "", target_username: str
             continue
         local_part, domain = email_clean.split("@", 1)
 
+        # Discard explicit non-email URI schemes / prefixes
+        if any(email_clean.startswith(prefix) for prefix in ("xmpp:", "jabber:", "jid:")):
+            continue
+
         # Discard generic corporate role prefixes unless the target's username is literally that prefix
         if local_part in ROLE_PREFIXES and local_part != target_username.lower():
             continue
@@ -343,7 +347,7 @@ def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead
             seen.add(k)
             leads.append(MessagingLead(platform="Signal", handle=handle))
 
-    # 4. Session IDs (66 hex characters starting with 05)
+    # 4. Session IDs (66 hex characters starting with 05) - requires label or contextual window
     for m in re.finditer(r"(?:session(?:[\s_-]?id)?)[\s:=]+([0-9a-fA-F]{66})\b", text, re.IGNORECASE):
         s_id = m.group(1).lower()
         k = f"session:{s_id}"
@@ -353,12 +357,16 @@ def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead
 
     for m in re.finditer(r"\b(05[0-9a-fA-F]{64})\b", text):
         s_id = m.group(1).lower()
-        k = f"session:{s_id}"
-        if k not in seen:
-            seen.add(k)
-            leads.append(MessagingLead(platform="Session", handle=s_id))
+        start = max(0, m.start() - 35)
+        end = min(len(text), m.end() + 35)
+        window = text[start:end].lower()
+        if re.search(r"\b(session|oxen|messenger)\b", window):
+            k = f"session:{s_id}"
+            if k not in seen:
+                seen.add(k)
+                leads.append(MessagingLead(platform="Session", handle=s_id))
 
-    # 5. Tox IDs (76 hex characters)
+    # 5. Tox IDs (76 hex characters) - requires label or contextual window
     for m in re.finditer(r"(?:tox(?:[\s_-]?id)?)[\s:=]+([0-9a-fA-F]{76})\b", text, re.IGNORECASE):
         t_id = m.group(1).upper()
         k = f"tox:{t_id}"
@@ -368,24 +376,43 @@ def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead
 
     for m in re.finditer(r"\b([0-9a-fA-F]{76})\b", text):
         t_id = m.group(1).upper()
-        k = f"tox:{t_id}"
-        if k not in seen:
-            seen.add(k)
-            leads.append(MessagingLead(platform="Tox", handle=t_id))
+        start = max(0, m.start() - 35)
+        end = min(len(text), m.end() + 35)
+        window = text[start:end].lower()
+        if re.search(r"\b(tox|qtox|utox|toxic)\b", window):
+            k = f"tox:{t_id}"
+            if k not in seen:
+                seen.add(k)
+                leads.append(MessagingLead(platform="Tox", handle=t_id))
 
     # 6. SimpleX Chat links & handles
-    for m in re.finditer(r"(?:https?://)?simplex\.chat/contact#/?([^\s\"'>]+)", text, re.IGNORECASE):
+    for m in re.finditer(r"(?:https?://)?simplex\.chat/contact#/?([^\s\"'<>]+)", text, re.IGNORECASE):
         h = m.group(1).strip()
         k = f"simplex:{h.lower()}"
         if k not in seen:
             seen.add(k)
             leads.append(MessagingLead(platform="SimpleX", handle=f"simplex.chat/contact#/?{h}", url=f"https://simplex.chat/contact#/?{h}"))
 
-    # 7. XMPP / Jabber handles
-    for m in re.finditer(r"(?:xmpp:|jabber:|(?:xmpp|jabber)[\s:=]+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b", text, re.IGNORECASE):
+    # 7. XMPP / Jabber handles (prefixed or suffixed)
+    for m in re.finditer(
+        r"(?:xmpp:|jabber:|jid:|(?:xmpp|jabber|jid)[\s:=]+)([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\b",
+        text,
+        re.IGNORECASE,
+    ):
         jid = m.group(1).lower()
         k = f"xmpp:{jid}"
-        if k not in seen and not jid.endswith(".png") and not jid.endswith(".jpg"):
+        if k not in seen and not jid.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            seen.add(k)
+            leads.append(MessagingLead(platform="XMPP", handle=jid, url=f"xmpp:{jid}"))
+
+    for m in re.finditer(
+        r"\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})\s*[\(\[](?:xmpp|jabber|jid)[\)\]]",
+        text,
+        re.IGNORECASE,
+    ):
+        jid = m.group(1).lower()
+        k = f"xmpp:{jid}"
+        if k not in seen and not jid.endswith((".png", ".jpg", ".jpeg", ".webp")):
             seen.add(k)
             leads.append(MessagingLead(platform="XMPP", handle=jid, url=f"xmpp:{jid}"))
 
@@ -443,11 +470,38 @@ def extract_leads_from_text(
         if is_valid_snowflake(raw_id) and raw_id not in ids:
             ids.append(raw_id)
 
-    found_emails = EMAIL_REGEX.findall(text)
+    # Extract emails, excluding addresses explicitly designated as XMPP / Jabber / JID
+    found_emails: list[str] = []
+    for m in EMAIL_REGEX.finditer(text):
+        start = m.start()
+        end = m.end()
+        prefix = text[max(0, start - 20) : start].lower()
+        suffix = text[end : min(len(text), end + 20)].lower()
+        # Skip if preceded by xmpp:, jabber:, jid: or labelled with xmpp/jabber/jid
+        if re.search(r"(?:xmpp:|jabber:|jid:|\b(?:xmpp|jabber|jid)[\s:=]*)$", prefix):
+            continue
+        # Skip if followed by (xmpp), [jabber], etc.
+        if re.search(r"^\s*[\(\[]\s*(?:xmpp|jabber|jid)\s*[\)\]]", suffix):
+            continue
+        found_emails.append(m.group(0))
+
     emails = list(clean_emails(found_emails, site_url=site_url, target_username=target_username))
 
     crypto = extract_crypto_leads(text)
     messaging = extract_messaging_leads(text, site_url=site_url)
+
+    # Discard any email that was extracted as an XMPP JID, unless explicitly designated as email
+    xmpp_jids = {m.handle.lower() for m in messaging if m.platform == "XMPP"}
+    if xmpp_jids and emails:
+        filtered_emails: list[str] = []
+        for em in emails:
+            if em.lower() in xmpp_jids:
+                em_esc = re.escape(em)
+                if re.search(rf"(?:mailto:|email[\s:=]+|e-mail[\s:=]+|mail[\s:=]+){em_esc}", text, re.IGNORECASE):
+                    filtered_emails.append(em)
+            else:
+                filtered_emails.append(em)
+        emails = filtered_emails
 
     return PivotLeads(
         discovered_emails=emails,

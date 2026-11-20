@@ -146,7 +146,7 @@ def safe_escape(v: Any) -> str:
     return escape(str(v))
 
 
-def make_link(url: Optional[str], label: Optional[str] = None) -> Union[Text, str]:
+def make_link(url: Optional[str], label: Optional[str] = None) -> Text | str:
     """Create a safe clickable link for Rich console."""
     if not url:
         return ""

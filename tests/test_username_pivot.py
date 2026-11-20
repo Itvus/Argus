@@ -246,3 +246,50 @@ def test_get_base_domain_and_subdomain_email_filtering():
     assert "support@blog.example.com" not in cleaned
     assert "staff@mail.example.com" not in cleaned
     assert "contact@example.com" not in cleaned
+
+
+def test_xmpp_addresses_not_extracted_as_emails():
+    from argus.modules.username_pivot import extract_leads_from_text, clean_emails
+
+    # BUG-22: XMPP URI should yield XMPP messaging lead, NOT an email lead
+    sample1 = "Contact me via xmpp:alice@jabber.ccc.de"
+    leads1 = extract_leads_from_text(sample1)
+    assert "alice@jabber.ccc.de" not in leads1.discovered_emails
+    assert len(leads1.discovered_emails) == 0
+    assert any(m.platform == "XMPP" and m.handle == "alice@jabber.ccc.de" for m in leads1.discovered_messaging)
+
+    # Labeled XMPP / Jabber / JID should not become email leads
+    sample2 = "My email is engineer@securecorp.io. XMPP: operator@xmpp.is. Jabber: bob@jabber.org. JID: charlie@conversations.im."
+    leads2 = extract_leads_from_text(sample2)
+    assert leads2.discovered_emails == ["engineer@securecorp.io"]
+    xmpp_handles = {m.handle for m in leads2.discovered_messaging if m.platform == "XMPP"}
+    assert "operator@xmpp.is" in xmpp_handles
+    assert "bob@jabber.org" in xmpp_handles
+    assert "charlie@conversations.im" in xmpp_handles
+
+    # Suffix notation: user@domain (XMPP)
+    sample3 = "reach out: alice@jabber.ccc.de (XMPP) or founder@mycompany.org"
+    leads3 = extract_leads_from_text(sample3)
+    assert "alice@jabber.ccc.de" not in leads3.discovered_emails
+    assert "founder@mycompany.org" in leads3.discovered_emails
+    assert any(m.platform == "XMPP" and m.handle == "alice@jabber.ccc.de" for m in leads3.discovered_messaging)
+
+    # clean_emails direct call with xmpp: / jabber: / jid: prefixes
+    cleaned_direct = clean_emails(["xmpp:alice@jabber.ccc.de", "jabber:bob@domain.org", "valid@domain.org"])
+    assert "valid@domain.org" in cleaned_direct
+    assert not any("alice@jabber.ccc.de" in e for e in cleaned_direct)
+    assert not any("bob@domain.org" in e for e in cleaned_direct)
+
+
+def test_unlabeled_hex_does_not_match_tox_or_session():
+    from argus.modules.username_pivot import extract_messaging_leads
+
+    # 76-char hex without Tox label/context should NOT be matched
+    raw_hash_76 = "0a" * 38
+    leads_tox = extract_messaging_leads(f"Git commit checksum {raw_hash_76} verified.")
+    assert not any(m.platform == "Tox" for m in leads_tox)
+
+    # 66-char 05-prefixed hex without Session label/context should NOT be matched
+    raw_session_66 = "05" + "ff" * 32
+    leads_session = extract_messaging_leads(f"Payload nonce {raw_session_66} in header.")
+    assert not any(m.platform == "Session" for m in leads_session)

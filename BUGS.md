@@ -48,7 +48,7 @@ Fix: add `SocialProfile` to the `argus.models` import and cover the flow with `t
 
 - **Severity**: Critical
 - **Location**: `argus/cli.py` (`render_report_rich`, `print_banner`), `argus/tui.py` (all `display_*` panels)
-- **Status**: Resolved (safe_escape and Style-based make_link applied; hostile markup verified in tests/test_cli.py)
+- **Status**: **Partially resolved** — CLI escaping covers Discord/GitHub/breach/social fields only; `tui.py` was never patched and the CLI leads panel still crashes. See BUG-19 and BUG-20.
 
 Scraped values (GitHub bio, breach service names, profile URLs, handles, dork queries, platform names) are interpolated into a markup-enabled `Console`. Any `[/]` or unbalanced `[tag]` in external data raises `MarkupError` and the report never renders.
 
@@ -109,7 +109,7 @@ Fix: `json.dumps(...).replace("<", "\\u003c")` (and `>` / `&` for depth). Note t
 | BUG-08 | Medium | `argus/orchestrator.py:520-575` | After the parallel phase, Hudson Rock, OpenPGP, RDAP/crt.sh and Holehe (120+ modules per address) run sequentially per email. Three discovered emails turn a fast scan into minutes. | Resolved (multi-email sweep parallelized via `asyncio.gather`) |
 | BUG-09 | Medium | `argus/**` (39 sites) | 24 `except Exception: ... pass` blocks make network/parse failures indistinguishable from genuine "no hits" in `module_statuses`. `logger.warning` output in `run_username_pivot` is never surfaced (no handler configured). | Open |
 | BUG-10 | Low | `argus/modules/snowflake.py` | `decode_snowflake` accepts any 17–20 digit integer without an epoch sanity check; only `is_valid_snowflake` validates, so direct callers on pivot leads can produce absurd dates. | Resolved (epoch sanity check added; verified in `tests/test_snowflake.py`) |
-| BUG-11 | Low | `argus/orchestrator.py` (chained pivot) | Only `discovered_discord_ids[0]` is decoded and queried; additional collected IDs are dropped. | Resolved (all discovered IDs decoded into leads; verified in `tests/test_orchestrator.py`) |
+| BUG-11 | Low | `argus/orchestrator.py` (chained pivot) | Only `discovered_discord_ids[0]` is decoded and queried; additional collected IDs are dropped. | **Partially resolved** — all IDs are decoded into notes, but Discord/CordCat lookups still run only for `[0]`. |
 | BUG-12 | Low | `argus/modules/discord_api.py:120-200` | ~40 lines of profile parsing duplicated between the 200 and 429 retry branches; retries once, ignores `X-RateLimit-Global` and `X-RateLimit-Scope`. | Resolved (`parse_discord_profile_payload` helper; verified in `tests/test_discord_api.py`) |
 | BUG-13 | Low | `argus/modules/username_pivot.py:736` | `done_count += 1` from concurrent tasks — progress totals can overshoot. | Resolved (`asyncio.Lock()` protects counter) |
 | BUG-14 | Low | `argus/modules/enrichment.py:45`, `discord_api.py:109` | `User-Agent` hardcodes `argus/0.1.0` and a placeholder URL `+https://github.com/argus`. | Resolved (dynamic `__version__` and repository URL) |
@@ -152,3 +152,96 @@ Fix: `json.dumps(...).replace("<", "\\u003c")` (and `>` / `&` for depth). Note t
 6. **BUG-08** — batch the post-processing fan-out with `asyncio.gather` and a shared semaphore.
 7. **Tooling** — add `ruff`, `mypy`, and `pytest --cov` (fail under 70%) to CI, triggered on push to `main`.
 8. **Packaging** — add `argus/__main__.py`, ship `argus.1`, single-source `__version__`, refresh README badges.
+
+---
+
+## 6. Round 2 verification (post-fix audit)
+
+Re-audit after commits `5d9a78d` and `222539e`. `pytest` → 78 passed in 12.7s (was 68 in 4.6s; `AGENTS.md` targets < 2s). Overall rating after fixes: **71 / 100**.
+
+### 6.1 Previously reported bugs
+
+| ID | Verified state | Evidence |
+|---|---|---|
+| BUG-01 | Fixed | `SocialProfile` imported; `tests/test_orchestrator.py` exercises the Keybase path |
+| BUG-02 | **Not fixed — partial** | CLI escapes 6 field groups; leads panel still raises `MarkupError`; `tui.py` has no escaping at all |
+| BUG-03 | Fixed | Hardcoded key removed; missing key now returns `skipped`; `config` shows the variable |
+| BUG-04 | Fixed | Graph JSON escapes `<`, `>`, `&` |
+| BUG-05 | Fixed | Apex/ccTLD parsing in `get_base_domain` |
+| BUG-06 | Fixed | HTTPS + `urllib.parse.quote` |
+| BUG-07 | Fixed | Bounded 4-attempt polling |
+| BUG-08 | Fixed, new risk | Per-email fan-out is parallel, but now unbounded (see BUG-24) |
+| BUG-09 | Open | 39 broad handlers remain, 24 silent `pass` |
+| BUG-10 | Fixed | `decode_snowflake` delegates to `is_valid_snowflake` |
+| BUG-11 | Partial | Only `discovered_discord_ids[0]` triggers Discord/CordCat lookups |
+| BUG-12 | Fixed | `parse_discord_profile_payload` helper, no duplicated block |
+| BUG-13 | Fixed | `asyncio.Lock()` around the counter |
+| BUG-14 | Fixed | `f"argus/{__version__} (+https://github.com/Itvus/Argus)"` |
+| BUG-15 | Fixed | Lowercase proxy variables honored |
+| BUG-16 | Open | Temporary HTML reports still accumulate |
+| BUG-17 | Open | Windows asyncio monkeypatch unchanged |
+| BUG-18 | Fixed | `DiscordProfile.bio` / `SteamProfile.summary` populated and wired into lead extraction |
+
+### 6.2 New defects introduced or exposed by the fixes
+
+#### BUG-19 — `argus/tui.py` was never sanitized
+
+- **Severity**: Critical
+- **Status**: Open
+- **Reproduction**: build a report with `target="u[/]"` and call each `display_*` function. 6 of 8 panels raise `MarkupError` (overview, discord, leads, profiles, enrichment, diagnostics). `git log -- argus/tui.py` confirms the file was not touched by either fix commit.
+- The `--tui` / `argus explore` command path therefore still crashes on hostile scraped data even though `argus scan` is mostly hardened.
+
+#### BUG-20 — CLI escaping is incomplete; the leads panel still crashes
+
+- **Severity**: High
+- **Status**: Open
+- Fields still interpolated raw into Rich markup: `report.pivot_leads` (emails, crypto networks/addresses, messaging platforms/handles, Discord tags/IDs/invites, notes — `argus/cli.py:684-701`), CordCat aliases/FiveM IDs, Keybase profile/proofs/wallets, OpenPGP identities, domain recon registrar/subdomains, package name/description/author email, Wayback URLs, EXIF make/model/software, dorks, IntelX records, Hudson Rock infections, diagnostics messages, and the correlation reasons list.
+- Reproduction: `PivotLeads(discovered_emails=["a@b.com[/]"])` → `MarkupError: closing tag '[/]' at position 1 has nothing to close`.
+- `tests/test_cli.py::test_render_report_rich_hostile_markup` only covers the fields that were already escaped, so the gap is invisible to CI.
+
+#### BUG-21 — `make_link` annotation references an unimported name
+
+- **Severity**: Medium
+- **Status**: Resolved (`Text | str` type union annotation in `argus/cli.py`)
+
+#### BUG-22 — XMPP addresses are also emitted as email leads
+
+- **Severity**: Medium
+- **Status**: Resolved (XMPP JIDs explicitly excluded from email leads via prefix/suffix checks and cross-checking; verified in `tests/test_username_pivot.py`)
+- `extract_messaging_leads` correctly detects `xmpp:alice@jabber.ccc.de`, but `EMAIL_REGEX` matches the same string, so `extract_leads_from_text` adds `alice@jabber.ccc.de` to `discovered_emails`. The breach, Holehe, and RDAP stages then run on a JID that is not an email address.
+- Reproduction: `extract_leads_from_text("xmpp:alice@jabber.ccc.de").discovered_emails == ["alice@jabber.ccc.de"]`.
+
+#### BUG-23 — Context-free Tox/Session regexes produce false positives
+
+- **Severity**: Medium
+- **Status**: Resolved (Session and Tox extractors require explicit labels or contextual windows `oxen`/`session`/`tox`/`qtox`; verified in `tests/test_username_pivot.py`)
+- `argus/modules/username_pivot.py` matches `\b([0-9a-fA-F]{76})\b` as a Tox ID and `\b(05[0-9a-fA-F]{64})\b` as a Session ID without any label requirement. Any standalone 76-char hex blob, or any `05`-prefixed 66-char hex value (checksum, hash fragment, session token), becomes a messaging lead. This contradicts the strict context windows used for Bitcoin/Ethereum/Solana.
+- Reproduction: `extract_messaging_leads("hash " + "0a"*38)` → `[("Tox", "0A0A0A0A0A...")]`.
+- Related: the SimpleX pattern captures an unbounded `[^\s"'>]+`, so trailing markup can end up inside the handle.
+
+#### BUG-24 — Unbounded fan-out in the email post-processing stage
+
+- **Severity**: Medium
+- **Status**: Open
+- The new `asyncio.gather` blocks in `_run_username_pivot_flow` launch Holehe (120+ modules at concurrency 15), Hudson Rock, and RDAP/crt.sh per address with no shared semaphore. Twenty discovered emails can mean hundreds of concurrent sockets to third-party APIs, inviting rate limits and bans — the exact behaviour the parallelization was meant to improve.
+
+#### BUG-25 — BUGS.md overstates what was fixed
+
+- **Severity**: Low
+- **Status**: Open
+- BUG-02 and BUG-11 are marked "Resolved" while both remain partial (see BUG-19/20 and the corrected BUG-11 row). The audit trail should reflect verified state, not intent.
+
+#### BUG-26 — New feature work landed under a `fix:` commit
+
+- **Severity**: Low
+- **Status**: Open
+- Commit `5d9a78d` adds Session, Tox, SimpleX, and XMPP extraction, plus new HTML graph node types, under a bug-fix message. New extractors arrived with positive-only tests and no negative/false-positive cases, which is how BUG-22 and BUG-23 slipped through.
+
+### 6.3 Updated remediation order
+
+1. **BUG-19 / BUG-20** — apply one sanitizer at the rendering boundary (`Console(..., markup=?)` conflicts aside, use `rich.markup.escape` or `Text` for every data cell) in both `cli.py` and `tui.py`; extend the hostile-input test to a full report containing leads, packages, Keybase, domain recon, and diagnostics.
+2. **BUG-21** — import `Union` (or use `Text | str`); add `ruff` + `mypy` to CI so annotation errors fail the build.
+3. **BUG-22 / BUG-23** — require an explicit `tox:` / `session:` label (or a validated 05-prefix plus context) and exclude XMPP JIDs from the email lead set.
+4. **BUG-24** — wrap the per-email fan-out in a shared `asyncio.Semaphore` and cap total in-flight requests.
+5. **BUG-25 / BUG-26** — update statuses only after a reproduction test passes; keep feature work in `feat:` commits.
+6. Remaining from round 1: **BUG-09**, **BUG-16**, **BUG-17**, partial **BUG-11**.
