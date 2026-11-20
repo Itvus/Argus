@@ -93,6 +93,14 @@ class InvestigationOrchestrator:
                 email_sites=email_sites,
                 progress_callback=progress_callback,
             )
+        elif is_email:
+            await self._investigate_email(
+                email=clean_target,
+                report=report,
+                all_sites=all_sites,
+                email_sites=email_sites,
+                progress_callback=progress_callback,
+            )
         else:
             await self._investigate_username(
                 raw_username=clean_target,
@@ -116,7 +124,7 @@ class InvestigationOrchestrator:
             gravatar_hash = hashlib.md5(em.strip().lower().encode("utf-8")).hexdigest()
             avatar_sources.append((f"Gravatar ({em})", f"https://www.gravatar.com/avatar/{gravatar_hash}?d=404"))
 
-        if avatar_sources:
+        if avatar_sources and not self.config.offline:
             hashes, matches = await fetch_and_hash_avatars(
                 avatar_sources=avatar_sources,
                 timeout=self.config.timeout,
@@ -152,7 +160,7 @@ class InvestigationOrchestrator:
         for sp in report.social_profiles:
             if sp.status == "Claimed" and sp.url not in profile_urls:
                 profile_urls.append(sp.url)
-        if profile_urls:
+        if profile_urls and not self.config.offline:
             wb_snaps, wb_status = await fetch_wayback_snapshots(
                 urls=profile_urls,
                 timeout=self.config.timeout,
@@ -165,7 +173,7 @@ class InvestigationOrchestrator:
         # -------------------------------------------------------------
         # Image Technical & EXIF Metadata Inspection (--metadata / -M)
         # -------------------------------------------------------------
-        if metadata and avatar_sources:
+        if metadata and avatar_sources and not self.config.offline:
             img_reports, img_status = await inspect_avatar_metadata(
                 avatar_sources=avatar_sources,
                 timeout=self.config.timeout,
@@ -192,7 +200,7 @@ class InvestigationOrchestrator:
         # -------------------------------------------------------------
         # B-Tier Flag 2: Intelligence X Darknet & Leak Archive Lookup
         # -------------------------------------------------------------
-        if intelx or self.config.intelx_api_key:
+        if (intelx or self.config.intelx_api_key) and not self.config.offline:
             ix_report, ix_status = await query_intelx(
                 selector=clean_target,
                 api_key=self.config.intelx_api_key,
@@ -258,6 +266,15 @@ class InvestigationOrchestrator:
                 )
             )
 
+        if self.config.offline:
+            report.module_statuses.append(
+                ModuleStatus(module_name="Discord API", status="skipped", message="Skipped in offline mode.")
+            )
+            report.module_statuses.append(
+                ModuleStatus(module_name="CordCat Indexer", status="skipped", message="Skipped in offline mode.")
+            )
+            return
+
         # 2. Concurrently query Discord Bot API and CordCat
         discord_task = fetch_discord_profile(
             user_id=user_id,
@@ -322,6 +339,103 @@ class InvestigationOrchestrator:
                     discord_dt_str=report.snowflake.created_at_utc if report.snowflake else None,
                     progress_callback=progress_callback,
                 )
+
+    async def _investigate_email(
+        self,
+        email: str,
+        report: InvestigationReport,
+        all_sites: bool,
+        email_sites: bool,
+        progress_callback: Optional[ProgressCallback],
+    ) -> None:
+        """Execute email-first OSINT reconnaissance with automated username pivoting."""
+        clean_email = email.strip()
+        if clean_email not in report.pivot_leads.discovered_emails:
+            report.pivot_leads.discovered_emails.append(clean_email)
+
+        if self.config.offline:
+            report.module_statuses.append(
+                ModuleStatus(
+                    module_name="Email Recon",
+                    status="skipped",
+                    message="Skipped in offline mode.",
+                )
+            )
+            return
+
+        # 1. Breach exposure on target email
+        breaches, b_status = await check_breaches(
+            queries=[clean_email],
+            hibp_api_key=self.config.hibp_api_key,
+            leakcheck_api_key=self.config.leakcheck_api_key,
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
+        report.breaches.extend(breaches)
+        report.module_statuses.append(b_status)
+
+        # 2. Infostealer intelligence (Hudson Rock)
+        hr_data, hr_status = await fetch_hudson_rock_intel(
+            query=clean_email,
+            query_type="email",
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
+        if hr_data and hr_data.total_stealers > 0:
+            report.hudson_rock.append(hr_data)
+        report.module_statuses.append(hr_status)
+
+        # 3. OpenPGP keys lookup
+        pgp_records, pgp_status = await lookup_openpgp_keys(
+            emails=[clean_email],
+            timeout=self.config.timeout,
+            proxy=self.config.proxy,
+            progress_callback=progress_callback,
+        )
+        report.pgp_keys.extend(pgp_records)
+        report.module_statuses.append(pgp_status)
+
+        # 4. Custom domain recon (RDAP + crt.sh)
+        custom_domains = extract_custom_domains([clean_email])
+        if custom_domains:
+            for c_dom in custom_domains:
+                d_rec, d_stat = await recon_domain(
+                    domain=c_dom,
+                    timeout=self.config.timeout,
+                    proxy=self.config.proxy,
+                    progress_callback=progress_callback,
+                )
+                if d_rec:
+                    report.domain_recon.append(d_rec)
+                report.module_statuses.append(d_stat)
+
+        # 5. Email registration check (Holehe) if requested
+        if email_sites:
+            reg_report, reg_status = await check_email_registrations(
+                email=clean_email,
+                timeout=self.config.timeout,
+                proxy=self.config.proxy,
+                progress_callback=progress_callback,
+            )
+            if reg_report:
+                report.email_registrations.append(reg_report)
+            report.module_statuses.append(reg_status)
+
+        # 6. Extract username handle and pivot to username
+        local_user = clean_email.split("@")[0]
+        report.pivot_leads.notes.append(
+            f"Pivoting from primary email {clean_email} to handle @{local_user}"
+        )
+        await self._run_username_pivot_flow(
+            username=local_user,
+            report=report,
+            all_sites=all_sites,
+            email_sites=email_sites,
+            discord_dt_str=None,
+            progress_callback=progress_callback,
+        )
 
     async def _investigate_username(
         self,
@@ -417,6 +531,12 @@ class InvestigationOrchestrator:
         progress_callback: Optional[ProgressCallback],
     ) -> None:
         """Run Maigret username sweep and GitHub audit in parallel, then chain breach lookups."""
+        if self.config.offline:
+            report.module_statuses.append(
+                ModuleStatus(module_name="Username Enumeration", status="skipped", message="Skipped in offline mode.")
+            )
+            return
+
         discord_dt: Optional[datetime] = None
         if discord_dt_str:
             try:
@@ -689,6 +809,15 @@ class InvestigationOrchestrator:
         for msg in new_leads.discovered_messaging:
             if not any(existing.platform == msg.platform and existing.handle.lower() == msg.handle.lower() for existing in target_leads.discovered_messaging):
                 target_leads.discovered_messaging.append(msg)
+        for ph in new_leads.discovered_phones:
+            if not any(existing.e164 == ph.e164 for existing in target_leads.discovered_phones):
+                target_leads.discovered_phones.append(ph)
+        for cust in new_leads.discovered_custom:
+            if not any(
+                existing.get("name") == cust.get("name") and existing.get("value") == cust.get("value")
+                for existing in target_leads.discovered_custom
+            ):
+                target_leads.discovered_custom.append(cust)
         for n in new_leads.notes:
             if n not in target_leads.notes:
                 target_leads.notes.append(n)

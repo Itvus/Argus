@@ -104,8 +104,8 @@ flowchart LR
 | 📄 **JSON Export** | ✅ Supported | Structured Pydantic schema output via `--json` or `--out` |
 | 📑 **Self-Contained HTML Reports** | ✅ Supported | Standalone zero-dependency HTML export with `--html` and browser preview `--view` |
 | 🔄 **Proxy Support (Tor / SOCKS5 / HTTP)** | ✅ Supported | Configurable `--proxy` / `-x` flag or `ARGUS_PROXY` environment variable |
-| 🎮 **Gaming Ecosystem Pivots** | ✅ Supported | Mojang API Minecraft UUID/skin render and Steam Community XML profiling |
-| 🪙 **Precision Crypto & Messaging Leads** | ✅ Supported | BTC, ETH (with commit filter), SOL, Telegram, Matrix, and Signal extraction |
+| 🎮 **Gaming Ecosystem Pivots** | ✅ Supported | Mojang API Minecraft UUID/skin render, Steam Community XML, and Roblox Public API |
+| 🪙 **Precision Crypto & Payment Leads** | ✅ Supported | BTC, ETH, SOL, Monero (XMR), CashApp, Venmo, PayPal, Telegram, Matrix, Signal |
 | 🛡️ **Hudson Rock Infostealer Intel** | ✅ Supported | Unauthenticated infostealer malware infection & stolen credential analysis |
 | 🖼️ **Cross-Platform Avatar Hashing** | ✅ Supported | 64-bit dHash perceptual matching with Hamming distance visual correlation |
 | 🎯 **Algorithmic Confidence Scoring** | ✅ Supported | Objective 0–100% target correlation score based on multi-vector evidence |
@@ -119,7 +119,11 @@ flowchart LR
 | 🔍 **Pre-Computed Google Dorks** | ✅ Supported | Opt-in `--dorks` / `-D` flag generating targeted web/paste/leak search URLs |
 | 🌐 **Intelligence X Darknet Search** | ✅ Supported | Opt-in `--intelx` flag for public paste and darknet archive hits |
 | 💻 **Interactive Terminal UI (TUI)** | ✅ Supported | Menu-driven terminal report inspection via `argus tui` / `argus explore` |
-| ⚙️ **Custom Extraction Patterns** | ⏳ Planned | User-defined regex rules in `~/.argus/patterns/` |
+| ⚙️ **Custom Extraction Patterns** | ✅ Supported | User-defined regex rules in `~/.argus/patterns/*.json` |
+| 📞 **Phone Number Recon & Resolution** | ✅ Supported | ITU-T E.164 country code mapping and anti-noise contact parsing |
+| ⚖️ **Investigation Snapshot Diffing** | ✅ Supported | Compare two investigation JSON reports via `argus diff` |
+| 🔒 **Strict Offline Mode** | ✅ Supported | Local analysis without network requests via `--offline` |
+| 📝 **Markdown Dossier Export** | ✅ Supported | Output GitHub-Flavored Markdown dossiers via `--md` / `--markdown` |
 
 ---
 

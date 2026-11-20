@@ -16,6 +16,8 @@ from bs4 import BeautifulSoup
 import httpx
 
 from argus.models import CryptoLead, MessagingLead, PivotLeads, SocialProfile
+from argus.modules.custom_patterns import extract_custom_leads
+from argus.modules.phone_recon import extract_phone_leads
 from argus.modules.snowflake import is_valid_snowflake
 
 logger = logging.getLogger("argus.username_pivot")
@@ -288,6 +290,14 @@ def extract_crypto_leads(text: str) -> list[CryptoLead]:
                 seen.add(addr)
                 leads.append(CryptoLead(network="Solana", address=addr))
 
+    # 5. Monero (Base58 starts with 4 or 8, length 95 or 106)
+    for m in re.finditer(r"\b([48][0-9AB][1-9A-HJ-NP-Za-km-z]{93}(?:[1-9A-HJ-NP-Za-km-z]{11})?)\b", text):
+        addr = m.group(1)
+        if len(addr) in (95, 106):
+            if addr not in seen:
+                seen.add(addr)
+                leads.append(CryptoLead(network="Monero", address=addr))
+
     return leads
 
 
@@ -416,6 +426,44 @@ def extract_messaging_leads(text: str, site_url: str = "") -> list[MessagingLead
             seen.add(k)
             leads.append(MessagingLead(platform="XMPP", handle=jid, url=f"xmpp:{jid}"))
 
+    # 8. CashApp ($cashtag or cash.app/$cashtag)
+    for m in re.finditer(r"(?:https?://)?(?:www\.)?cash\.app/\$([a-zA-Z][a-zA-Z0-9_-]{0,19})\b", text, re.IGNORECASE):
+        tag = m.group(1)
+        k = f"cashapp:{tag.lower()}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="CashApp", handle=f"${tag}", url=f"https://cash.app/${tag}"))
+
+    for m in re.finditer(r"(?:cashapp|cash\s*app)[\s:=]+\$?([a-zA-Z][a-zA-Z0-9_-]{0,19})\b", text, re.IGNORECASE):
+        tag = m.group(1)
+        k = f"cashapp:{tag.lower()}"
+        if k not in seen:
+            seen.add(k)
+            leads.append(MessagingLead(platform="CashApp", handle=f"${tag}", url=f"https://cash.app/${tag}"))
+
+    # 9. Venmo (venmo.com/u/handle or venmo: @handle)
+    for m in re.finditer(r"(?:https?://)?(?:www\.)?venmo\.com/(?:u/)?([a-zA-Z0-9_-]{3,30})\b", text, re.IGNORECASE):
+        h = m.group(1)
+        k = f"venmo:{h.lower()}"
+        if k not in seen and h.lower() not in ("about", "business", "security", "terms", "privacy"):
+            seen.add(k)
+            leads.append(MessagingLead(platform="Venmo", handle=f"@{h}", url=f"https://venmo.com/u/{h}"))
+
+    for m in re.finditer(r"\bvenmo[\s:=]+@?([a-zA-Z0-9_-]{3,30})\b", text, re.IGNORECASE):
+        h = m.group(1)
+        k = f"venmo:{h.lower()}"
+        if k not in seen and h.lower() not in ("about", "business", "security", "terms", "privacy"):
+            seen.add(k)
+            leads.append(MessagingLead(platform="Venmo", handle=f"@{h}", url=f"https://venmo.com/u/{h}"))
+
+    # 10. PayPal.me (paypal.me/handle)
+    for m in re.finditer(r"(?:https?://)?(?:www\.)?paypal\.me/([a-zA-Z0-9_.-]{3,50})\b", text, re.IGNORECASE):
+        h = m.group(1)
+        k = f"paypal:{h.lower()}"
+        if k not in seen and h.lower() not in ("terms", "privacy", "help", "home"):
+            seen.add(k)
+            leads.append(MessagingLead(platform="PayPal", handle=h, url=f"https://paypal.me/{h}"))
+
     return leads
 
 
@@ -503,6 +551,9 @@ def extract_leads_from_text(
                 filtered_emails.append(em)
         emails = filtered_emails
 
+    phones = extract_phone_leads(text)
+    custom = extract_custom_leads(text)
+
     return PivotLeads(
         discovered_emails=emails,
         discovered_discord_ids=ids,
@@ -510,7 +561,26 @@ def extract_leads_from_text(
         discovered_invites=invites,
         discovered_crypto=crypto,
         discovered_messaging=messaging,
+        discovered_phones=phones,
+        discovered_custom=custom,
     )
+
+
+class LeadsResult(tuple):
+    """Custom 6-element tuple subclass providing standard unpack while carrying phones and custom leads."""
+
+    def __new__(cls, invites, tags, ids, emails, crypto, messaging, phones=None, custom=None):
+        return super().__new__(cls, (invites, tags, ids, emails, crypto, messaging))
+
+    def __init__(self, invites, tags, ids, emails, crypto, messaging, phones=None, custom=None):
+        self.invites = invites
+        self.tags = tags
+        self.ids = ids
+        self.emails = emails
+        self.crypto = crypto
+        self.messaging = messaging
+        self.phones = phones or []
+        self.custom = custom or []
 
 
 async def _fetch_and_extract_leads(
@@ -526,12 +596,14 @@ async def _fetch_and_extract_leads(
     emails: set[str] = set()
     crypto: list[CryptoLead] = []
     messaging: list[MessagingLead] = []
+    phones: list[Any] = []
+    custom: list[dict[str, str]] = []
 
     async with semaphore:
         try:
             resp = await client.get(url, follow_redirects=True)
             if resp.status_code != 200:
-                return invites, tags, ids, emails, crypto, messaging
+                return LeadsResult(invites, tags, ids, emails, crypto, messaging, phones, custom)
 
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -641,11 +713,13 @@ async def _fetch_and_extract_leads(
             emails.update(extracted.discovered_emails)
             crypto.extend(extracted.discovered_crypto)
             messaging.extend(extracted.discovered_messaging)
+            phones.extend(extracted.discovered_phones)
+            custom.extend(extracted.discovered_custom)
 
         except Exception:
             pass
 
-    return invites, tags, ids, emails, crypto, messaging
+    return LeadsResult(invites, tags, ids, emails, crypto, messaging, phones, custom)
 
 
 async def _run_maigret_library(
@@ -888,12 +962,33 @@ async def run_username_pivot(
                     leads.discovered_emails.extend(emails)
                     raw_crypto.extend(cr)
                     raw_messaging.extend(msg)
+                    if hasattr(res, "phones"):
+                        leads.discovered_phones.extend(res.phones)
+                    if hasattr(res, "custom"):
+                        leads.discovered_custom.extend(res.custom)
 
         # De-duplicate leads
         leads.discovered_invites = sorted(list(set(leads.discovered_invites)))
         leads.discovered_discord_tags = sorted(list(set(leads.discovered_discord_tags)))
         leads.discovered_discord_ids = sorted(list(set(leads.discovered_discord_ids)))
         leads.discovered_emails = sorted(list(set(leads.discovered_emails)))
+
+        seen_phones = set()
+        unique_phones = []
+        for p in leads.discovered_phones:
+            if p.e164 not in seen_phones:
+                seen_phones.add(p.e164)
+                unique_phones.append(p)
+        leads.discovered_phones = unique_phones
+
+        seen_custom = set()
+        unique_custom = []
+        for c in leads.discovered_custom:
+            k = (c.get("name"), c.get("value"))
+            if k not in seen_custom:
+                seen_custom.add(k)
+                unique_custom.append(c)
+        leads.discovered_custom = unique_custom
 
         seen_crypto = set()
         for c in raw_crypto:

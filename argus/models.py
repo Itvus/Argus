@@ -101,6 +101,14 @@ class MessagingLead(BaseModel):
     url: Optional[str] = None
 
 
+class PhoneLead(BaseModel):
+    """Discovered telephone number lead with ITU-T E.164 and country resolution."""
+    raw_number: str
+    e164: str
+    country_code: Optional[str] = None
+    country_name: Optional[str] = None
+
+
 class MinecraftProfile(BaseModel):
     """Minecraft account metadata resolved via Mojang API."""
     username: str
@@ -124,10 +132,24 @@ class SteamProfile(BaseModel):
     online_state: Optional[str] = None
 
 
+class RobloxProfile(BaseModel):
+    """Roblox account metadata resolved via public API."""
+    user_id: int
+    username: str
+    display_name: str
+    description: Optional[str] = None
+    created_at: Optional[str] = None
+    is_banned: bool = False
+    has_verified_badge: bool = False
+    avatar_url: Optional[str] = None
+    profile_url: str
+
+
 class GamingProfiles(BaseModel):
-    """Aggregated gaming ecosystem profiles (Minecraft, Steam)."""
+    """Aggregated gaming ecosystem profiles (Minecraft, Steam, Roblox)."""
     minecraft: Optional[MinecraftProfile] = None
     steam: Optional[SteamProfile] = None
+    roblox: Optional[RobloxProfile] = None
 
 
 class EmailAccountResult(BaseModel):
@@ -298,6 +320,8 @@ class PivotLeads(BaseModel):
     discovered_invites: list[str] = Field(default_factory=list)
     discovered_crypto: list[CryptoLead] = Field(default_factory=list)
     discovered_messaging: list[MessagingLead] = Field(default_factory=list)
+    discovered_phones: list[PhoneLead] = Field(default_factory=list)
+    discovered_custom: list[dict[str, str]] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
 
 

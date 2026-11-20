@@ -293,3 +293,41 @@ def test_unlabeled_hex_does_not_match_tox_or_session():
     raw_session_66 = "05" + "ff" * 32
     leads_session = extract_messaging_leads(f"Payload nonce {raw_session_66} in header.")
     assert not any(m.platform == "Session" for m in leads_session)
+
+
+def test_extract_monero_crypto_leads():
+    from argus.modules.username_pivot import extract_crypto_leads
+
+    # Standard Monero 95-char address starting with 4
+    xmr_addr = "44AFFq5AxmMNParseMZaaSt5Ftdq3kK8K7fW21QJmGy1c7dC19s4iQ9L13d8d6tV1z1nZk2h8N6iP3iP2r8p8m4B9oFpYQZ"
+    # Subaddress 95-char starting with 8
+    xmr_sub = "888tNkZrPN6JsEgekjMnABU4TBzc2Dt29EPAvkFxbANsAnJYPbb3iQ1YBRk1UXcdRsiKc9dhwMVgN5S9cQUiyoogDavup3H"
+
+    text = f"Donate Monero: {xmr_addr} or subaddress {xmr_sub}"
+    leads = extract_crypto_leads(text)
+    xmr_leads = [c for c in leads if c.network == "Monero"]
+
+    assert len(xmr_leads) == 2
+    assert xmr_leads[0].address == xmr_addr
+    assert xmr_leads[1].address == xmr_sub
+
+
+def test_extract_payment_messaging_leads():
+    from argus.modules.username_pivot import extract_messaging_leads
+
+    text = """
+    Support the project:
+    CashApp: $OSINTDev or https://cash.app/$SecurityPro
+    Venmo: @Analyst_Fund or https://venmo.com/u/OpsLead
+    PayPal: https://paypal.me/ResearchOrg
+    """
+    leads = extract_messaging_leads(text)
+    cashapp = [m for m in leads if m.platform == "CashApp"]
+    venmo = [m for m in leads if m.platform == "Venmo"]
+    paypal = [m for m in leads if m.platform == "PayPal"]
+
+    assert any(m.handle == "$OSINTDev" for m in cashapp)
+    assert any(m.handle == "$SecurityPro" for m in cashapp)
+    assert any(m.handle == "@Analyst_Fund" for m in venmo)
+    assert any(m.handle == "@OpsLead" for m in venmo)
+    assert any(m.handle == "ResearchOrg" for m in paypal)

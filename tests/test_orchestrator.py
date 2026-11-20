@@ -204,3 +204,66 @@ async def test_orchestrator_multi_snowflake_pivot_leads(mock_config: Config):
     assert report.snowflake.snowflake_id == 155149108183695360
     # Second snowflake ID should be preserved in pivot leads notes
     assert any("251005447920758264" in note for note in report.pivot_leads.notes)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_offline_mode():
+    """Verify that offline mode computes Snowflake locally without network requests."""
+    offline_cfg = Config(
+        discord_bot_token=None,
+        cordcat_api_key=None,
+        hibp_api_key=None,
+        leakcheck_api_key=None,
+        github_token=None,
+        intelx_api_key=None,
+        offline=True,
+    )
+    orchestrator = InvestigationOrchestrator(offline_cfg)
+    report = await orchestrator.run_investigation("155149108183695360")
+
+    assert report.snowflake is not None
+    assert report.snowflake.snowflake_id == 155149108183695360
+    assert report.snowflake.created_at_utc.startswith("2016-03-04")
+
+    # Discord and CordCat modules should be skipped
+    statuses = {s.module_name: s.status for s in report.module_statuses}
+    assert statuses.get("Discord API") == "skipped"
+    assert statuses.get("CordCat Indexer") == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_email_first_target(mock_config: Config):
+    """Verify that email target triggers email-first reconnaissance and pivots to local username."""
+    orchestrator = InvestigationOrchestrator(mock_config)
+
+    with unittest.mock.patch(
+        "argus.orchestrator.check_breaches",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], ModuleStatus(module_name="Breaches", status="skipped")),
+    ) as mock_breaches, unittest.mock.patch(
+        "argus.orchestrator.fetch_hudson_rock_intel",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=(None, ModuleStatus(module_name="Hudson Rock", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.lookup_openpgp_keys",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], ModuleStatus(module_name="OpenPGP", status="skipped")),
+    ), unittest.mock.patch(
+        "argus.orchestrator.extract_custom_domains",
+        return_value=[],
+    ), unittest.mock.patch(
+        "argus.orchestrator.InvestigationOrchestrator._run_username_pivot_flow",
+        new_callable=unittest.mock.AsyncMock,
+    ) as mock_user_flow, unittest.mock.patch(
+        "argus.orchestrator.fetch_and_hash_avatars",
+        new_callable=unittest.mock.AsyncMock,
+        return_value=([], []),
+    ):
+        report = await orchestrator.run_investigation("alice.secops@example.com")
+
+    assert report.target_type == "email"
+    assert "alice.secops@example.com" in report.pivot_leads.discovered_emails
+    mock_breaches.assert_called_once()
+    # Check that username pivot was launched with the email handle
+    mock_user_flow.assert_called_once()
+    assert mock_user_flow.call_args.kwargs["username"] == "alice.secops"

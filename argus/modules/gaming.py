@@ -13,7 +13,7 @@ from typing import Callable, Optional, Tuple
 
 import httpx
 
-from argus.models import GamingProfiles, MinecraftProfile, ModuleStatus, SteamProfile
+from argus.models import GamingProfiles, MinecraftProfile, ModuleStatus, RobloxProfile, SteamProfile
 
 ProgressCallback = Callable[[str, int, int, str], None]
 
@@ -122,31 +122,112 @@ async def fetch_steam_profile(
     return None
 
 
+async def fetch_roblox_profile(
+    username: str,
+    timeout: int = 15,
+    proxy: Optional[str] = None,
+) -> Optional[RobloxProfile]:
+    """Resolve Roblox user ID, display name, account age, and avatar via public Roblox APIs."""
+    clean_username = username.strip()
+    if not clean_username or len(clean_username) > 20:
+        return None
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
+            # 1. Lookup username to resolve numeric User ID
+            lookup_url = "https://users.roblox.com/v1/usernames/users"
+            payload = {"usernames": [clean_username], "excludeBannedUsers": False}
+            resp = await client.post(lookup_url, json=payload, headers=headers)
+            if resp.status_code != 200:
+                return None
+
+            data = resp.json().get("data", [])
+            if not data or not isinstance(data, list):
+                return None
+
+            user_entry = data[0]
+            user_id = user_entry.get("id")
+            resolved_name = user_entry.get("name")
+            display_name = user_entry.get("displayName") or resolved_name
+
+            if not user_id or not resolved_name or resolved_name.lower() != clean_username.lower():
+                return None
+
+            # 2. Get user profile metadata (bio, created date, bans, badges)
+            user_url = f"https://users.roblox.com/v1/users/{user_id}"
+            user_resp = await client.get(user_url, headers=headers)
+            description = None
+            created_at = None
+            is_banned = False
+            has_verified_badge = False
+
+            if user_resp.status_code == 200:
+                user_info = user_resp.json()
+                description = user_info.get("description") or None
+                created_at = user_info.get("created")
+                is_banned = bool(user_info.get("isBanned", False))
+                has_verified_badge = bool(user_info.get("hasVerifiedBadge", False))
+
+            # 3. Get avatar thumbnail
+            avatar_url = None
+            thumb_url = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=150x150&format=Png&isCircular=false"
+            thumb_resp = await client.get(thumb_url, headers=headers)
+            if thumb_resp.status_code == 200:
+                thumb_data = thumb_resp.json().get("data", [])
+                if thumb_data and isinstance(thumb_data, list):
+                    avatar_url = thumb_data[0].get("imageUrl")
+
+            return RobloxProfile(
+                user_id=int(user_id),
+                username=resolved_name,
+                display_name=display_name,
+                description=description,
+                created_at=created_at,
+                is_banned=is_banned,
+                has_verified_badge=has_verified_badge,
+                avatar_url=avatar_url,
+                profile_url=f"https://www.roblox.com/users/{user_id}/profile",
+            )
+    except Exception:
+        pass
+
+    return None
+
+
 async def fetch_gaming_profiles(
     username: str,
     timeout: int = 15,
     proxy: Optional[str] = None,
     progress_callback: Optional[ProgressCallback] = None,
 ) -> Tuple[Optional[GamingProfiles], ModuleStatus]:
-    """Concurrently query Mojang and Steam APIs for target handle."""
+    """Concurrently query Mojang, Steam, and Roblox APIs for target handle."""
     if progress_callback:
-        progress_callback("Gaming Ecosystem Pivot", 0, 2, "Checking Mojang API & Steam Community...")
+        progress_callback("Gaming Ecosystem Pivot", 0, 3, "Checking Mojang, Steam, and Roblox APIs...")
 
     minecraft_task = fetch_minecraft_profile(username=username, timeout=timeout, proxy=proxy)
     steam_task = fetch_steam_profile(username=username, timeout=timeout, proxy=proxy)
+    roblox_task = fetch_roblox_profile(username=username, timeout=timeout, proxy=proxy)
 
-    mc_res, steam_res = await asyncio.gather(minecraft_task, steam_task, return_exceptions=True)
+    mc_res, steam_res, roblox_res = await asyncio.gather(
+        minecraft_task, steam_task, roblox_task, return_exceptions=True
+    )
 
     mc_profile = mc_res if isinstance(mc_res, MinecraftProfile) else None
     steam_profile = steam_res if isinstance(steam_res, SteamProfile) else None
+    roblox_profile = roblox_res if isinstance(roblox_res, RobloxProfile) else None
 
-    if not mc_profile and not steam_profile:
+    if not mc_profile and not steam_profile and not roblox_profile:
         if progress_callback:
-            progress_callback("Gaming Ecosystem Pivot", 2, 2, "No registered Minecraft or Steam profiles found")
+            progress_callback("Gaming Ecosystem Pivot", 3, 3, "No registered gaming profiles found")
         return None, ModuleStatus(
             module_name="Gaming Ecosystem",
             status="no_hits",
-            message=f"No public Minecraft or Steam profiles matched handle '{username}'.",
+            message=f"No public Minecraft, Steam, or Roblox profiles matched handle '{username}'.",
         )
 
     found_parts = []
@@ -154,12 +235,14 @@ async def fetch_gaming_profiles(
         found_parts.append(f"Minecraft (UUID {mc_profile.uuid[:8]}...)")
     if steam_profile:
         found_parts.append(f"Steam (ID {steam_profile.steam_id_64})")
+    if roblox_profile:
+        found_parts.append(f"Roblox (ID {roblox_profile.user_id})")
 
     summary_msg = f"Discovered: {', '.join(found_parts)}"
     if progress_callback:
-        progress_callback("Gaming Ecosystem Pivot", 2, 2, summary_msg)
+        progress_callback("Gaming Ecosystem Pivot", 3, 3, summary_msg)
 
-    gaming_data = GamingProfiles(minecraft=mc_profile, steam=steam_profile)
+    gaming_data = GamingProfiles(minecraft=mc_profile, steam=steam_profile, roblox=roblox_profile)
     return gaming_data, ModuleStatus(
         module_name="Gaming Ecosystem",
         status="success",

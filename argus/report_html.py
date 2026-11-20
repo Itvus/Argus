@@ -238,6 +238,7 @@ def render_html_report(report: InvestigationReport) -> str:
     tag_count = len(report.pivot_leads.discovered_discord_tags)
     crypto_count = len(report.pivot_leads.discovered_crypto)
     messaging_count = len(report.pivot_leads.discovered_messaging)
+    phone_count = len(report.pivot_leads.discovered_phones)
     total_leads = (
         email_count
         + discord_id_count
@@ -245,6 +246,7 @@ def render_html_report(report: InvestigationReport) -> str:
         + tag_count
         + crypto_count
         + messaging_count
+        + phone_count
     )
     breach_count = len(report.breaches)
 
@@ -366,7 +368,7 @@ def render_html_report(report: InvestigationReport) -> str:
 
     # Gaming Ecosystem HTML (Minecraft & Steam)
     gaming_html = ""
-    if report.gaming and (report.gaming.minecraft or report.gaming.steam):
+    if report.gaming and (report.gaming.minecraft or report.gaming.steam or report.gaming.roblox):
         gaming_cards = []
         if report.gaming.minecraft:
             mc = report.gaming.minecraft
@@ -423,6 +425,41 @@ def render_html_report(report: InvestigationReport) -> str:
                       <span class="telemetry-label">Bio / Summary</span>
                       <span class="telemetry-value text-sm text-muted">{html.escape(st.summary)}</span>
                     </div>''' if st.summary else ''}
+                  </div>
+                </div>
+                """
+            )
+        if report.gaming.roblox:
+            rb = report.gaming.roblox
+            status_badge = '<span class="text-rose font-semibold">Banned</span>' if rb.is_banned else '<span class="text-emerald font-semibold">Active</span>'
+            verified_badge = '<span class="text-cyan font-semibold">Verified</span>' if rb.has_verified_badge else '<span class="text-muted">Standard</span>'
+            gaming_cards.append(
+                f"""
+                <div class="lead-group mt-3">
+                  <span class="lead-group-title">Roblox</span>
+                  <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Display Name / Handle</span>
+                      <span class="telemetry-value font-semibold"><a href="{html.escape(rb.profile_url)}" target="_blank" rel="noopener noreferrer" class="link-external">{html.escape(rb.display_name)} (@{html.escape(rb.username)}) {ICON_LINK}</a></span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Roblox User ID</span>
+                      <span class="telemetry-value font-mono copyable" onclick="copyText('{rb.user_id}')">
+                        {rb.user_id} <button class="btn-copy" title="Copy">{ICON_COPY}</button>
+                      </span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Account Status</span>
+                      <span class="telemetry-value">{status_badge} ({verified_badge})</span>
+                    </div>
+                    <div class="telemetry-item">
+                      <span class="telemetry-label">Account Created</span>
+                      <span class="telemetry-value">{html.escape(rb.created_at or 'N/A')}</span>
+                    </div>
+                    {f'''<div class="telemetry-item" style="grid-column: 1 / -1;">
+                      <span class="telemetry-label">Bio Description</span>
+                      <span class="telemetry-value text-sm text-muted">{html.escape(rb.description)}</span>
+                    </div>''' if rb.description else ''}
                   </div>
                 </div>
                 """
@@ -598,6 +635,24 @@ def render_html_report(report: InvestigationReport) -> str:
                 <div class="lead-group">
                   <span class="lead-group-title">Messaging Handles ({len(leads.discovered_messaging)})</span>
                   <div class="lead-pills-wrap">{msg_items}</div>
+                </div>
+                """
+            )
+
+        if leads.discovered_phones:
+            phone_items = "".join(
+                f"""<div class="lead-pill font-mono">
+                      <span class="tag">{html.escape(p.country_name or 'Phone')}</span>
+                      <span>{html.escape(p.e164)}</span>
+                      <button class="btn-copy" onclick="copyText('{html.escape(p.e164)}')" title="Copy">{ICON_COPY}</button>
+                    </div>"""
+                for p in leads.discovered_phones
+            )
+            lead_cards.append(
+                f"""
+                <div class="lead-group">
+                  <span class="lead-group-title">Telephone Numbers ({len(leads.discovered_phones)})</span>
+                  <div class="lead-pills-wrap">{phone_items}</div>
                 </div>
                 """
             )
@@ -1172,6 +1227,11 @@ def render_html_report(report: InvestigationReport) -> str:
     for idx, ml in enumerate(report.pivot_leads.discovered_messaging):
         nid = f"msg_{idx}"
         graph_nodes.append({"id": nid, "label": f"{ml.platform}:{ml.handle}", "sub": ml.platform, "type": "messaging", "color": "#10b981", "radius": 9, "url": ml.url or ""})
+        graph_edges.append({"source": "target", "target": nid})
+
+    for idx, pl in enumerate(report.pivot_leads.discovered_phones):
+        nid = f"phone_{idx}"
+        graph_nodes.append({"id": nid, "label": pl.e164, "sub": pl.country_name or "Phone", "type": "phone", "color": "#06b6d4", "radius": 9})
         graph_edges.append({"source": "target", "target": nid})
 
     graph_payload_json = (

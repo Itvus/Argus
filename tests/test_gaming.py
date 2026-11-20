@@ -4,10 +4,11 @@ import pytest
 import unittest.mock
 from argus.modules.gaming import (
     fetch_minecraft_profile,
+    fetch_roblox_profile,
     fetch_steam_profile,
     fetch_gaming_profiles,
 )
-from argus.models import MinecraftProfile, SteamProfile
+from argus.models import MinecraftProfile, RobloxProfile, SteamProfile
 
 
 @pytest.mark.asyncio
@@ -115,6 +116,47 @@ async def test_fetch_steam_profile_unassigned_error():
 
 
 @pytest.mark.asyncio
+async def test_fetch_roblox_profile_success():
+    mock_lookup_resp = unittest.mock.MagicMock()
+    mock_lookup_resp.status_code = 200
+    mock_lookup_resp.json.return_value = {
+        "data": [{"id": 12345678, "name": "Robloxian", "displayName": "RobloxianDisplay"}]
+    }
+
+    mock_user_resp = unittest.mock.MagicMock()
+    mock_user_resp.status_code = 200
+    mock_user_resp.json.return_value = {
+        "description": "Developer bio with contact info",
+        "created": "2018-05-10T12:00:00.000Z",
+        "isBanned": False,
+        "hasVerifiedBadge": True,
+    }
+
+    mock_thumb_resp = unittest.mock.MagicMock()
+    mock_thumb_resp.status_code = 200
+    mock_thumb_resp.json.return_value = {
+        "data": [{"imageUrl": "https://tr.rbxcdn.com/avatar.png"}]
+    }
+
+    mock_client = unittest.mock.AsyncMock()
+    mock_client.post.return_value = mock_lookup_resp
+    mock_client.get.side_effect = [mock_user_resp, mock_thumb_resp]
+    mock_client.__aenter__.return_value = mock_client
+
+    with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client):
+        profile = await fetch_roblox_profile("Robloxian")
+
+    assert profile is not None
+    assert profile.user_id == 12345678
+    assert profile.username == "Robloxian"
+    assert profile.display_name == "RobloxianDisplay"
+    assert profile.description == "Developer bio with contact info"
+    assert profile.has_verified_badge is True
+    assert profile.avatar_url == "https://tr.rbxcdn.com/avatar.png"
+    assert profile.profile_url == "https://www.roblox.com/users/12345678/profile"
+
+
+@pytest.mark.asyncio
 async def test_fetch_gaming_profiles_aggregation():
     with unittest.mock.patch(
         "argus.modules.gaming.fetch_minecraft_profile",
@@ -122,8 +164,11 @@ async def test_fetch_gaming_profiles_aggregation():
     ) as mock_mc, unittest.mock.patch(
         "argus.modules.gaming.fetch_steam_profile",
         new_callable=unittest.mock.AsyncMock,
-    ) as mock_steam:
-        # Both found
+    ) as mock_steam, unittest.mock.patch(
+        "argus.modules.gaming.fetch_roblox_profile",
+        new_callable=unittest.mock.AsyncMock,
+    ) as mock_roblox:
+        # All found
         mock_mc.return_value = MinecraftProfile(
             username="notch",
             uuid="069a79f444e94726a5befca90e38aaf5",
@@ -134,20 +179,29 @@ async def test_fetch_gaming_profiles_aggregation():
             custom_url="notch",
             profile_url="https://steamcommunity.com/id/notch",
         )
+        mock_roblox.return_value = RobloxProfile(
+            user_id=12345678,
+            username="notch",
+            display_name="Notch",
+            profile_url="https://www.roblox.com/users/12345678/profile",
+        )
 
         gaming, status = await fetch_gaming_profiles("notch")
         assert gaming is not None
         assert gaming.minecraft is not None
         assert gaming.steam is not None
+        assert gaming.roblox is not None
         assert status.status == "success"
         assert "Minecraft" in status.message
         assert "Steam" in status.message
+        assert "Roblox" in status.message
 
-        # Neither found
+        # None found
         mock_mc.return_value = None
         mock_steam.return_value = None
+        mock_roblox.return_value = None
 
         gaming_none, status_none = await fetch_gaming_profiles("notch")
         assert gaming_none is None
         assert status_none.status == "no_hits"
-        assert "No public Minecraft or Steam profiles" in status_none.message
+        assert "No public Minecraft, Steam, or Roblox profiles" in status_none.message

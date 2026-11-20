@@ -44,9 +44,10 @@ class Config:
     intelx_api_key: Optional[str] = None
     timeout: int = 15
     proxy: Optional[str] = None
+    offline: bool = False
 
     @classmethod
-    def load(cls, timeout: int = 15, proxy: Optional[str] = None) -> Config:
+    def load(cls, timeout: int = 15, proxy: Optional[str] = None, offline: bool = False) -> Config:
         _discover_and_load_env()
         resolved_proxy = (
             proxy
@@ -68,6 +69,7 @@ class Config:
             intelx_api_key=os.getenv("INTELX_API_KEY") or None,
             timeout=timeout,
             proxy=resolved_proxy,
+            offline=offline,
         )
 
     def mask_key(self, key: Optional[str]) -> str:
@@ -80,5 +82,5 @@ class Config:
         return f"{clean[:4]}...{clean[-4:]}"
 
 
-def get_config(timeout: int = 15, proxy: Optional[str] = None) -> Config:
-    return Config.load(timeout=timeout, proxy=proxy)
+def get_config(timeout: int = 15, proxy: Optional[str] = None, offline: bool = False) -> Config:
+    return Config.load(timeout=timeout, proxy=proxy, offline=offline)

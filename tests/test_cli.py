@@ -307,3 +307,66 @@ def test_render_report_rich_hostile_markup():
 
     # Must execute and render without raising rich.errors.MarkupError
     render_report_rich(report)
+
+
+def test_cli_diff_command(tmp_path):
+    """Test diffing two JSON reports via CLI."""
+    from argus.models import InvestigationReport, CorrelationScore, SocialProfile
+
+    rep1 = InvestigationReport(
+        target="alice",
+        target_type="username",
+        scan_timestamp_utc="2026-11-20T20:00:00Z",
+        scan_duration_seconds=1.2,
+        correlation=CorrelationScore(confidence_score=40, confidence_level="LOW"),
+        social_profiles=[
+            SocialProfile(platform="GitHub", url="https://github.com/alice", status="Claimed"),
+        ],
+    )
+    rep2 = InvestigationReport(
+        target="alice",
+        target_type="username",
+        scan_timestamp_utc="2026-11-20T21:00:00Z",
+        scan_duration_seconds=1.5,
+        correlation=CorrelationScore(confidence_score=75, confidence_level="HIGH"),
+        social_profiles=[
+            SocialProfile(platform="GitHub", url="https://github.com/alice", status="Claimed"),
+            SocialProfile(platform="GitLab", url="https://gitlab.com/alice", status="Claimed"),
+        ],
+    )
+
+    p1 = tmp_path / "snap1.json"
+    p2 = tmp_path / "snap2.json"
+    p1.write_text(rep1.model_dump_json(), encoding="utf-8")
+    p2.write_text(rep2.model_dump_json(), encoding="utf-8")
+
+    result = runner.invoke(app, ["diff", str(p1), str(p2)])
+    assert result.exit_code == 0
+    out = clean_output(result.stdout)
+    assert "Argus Investigation Diff" in out
+    assert "GitLab" in out
+
+    result_json = runner.invoke(app, ["diff", str(p1), str(p2), "--json"])
+    assert result_json.exit_code == 0
+    assert '"score_delta"' in result_json.stdout
+    assert '"delta": 35' in result_json.stdout
+
+
+def test_cli_scan_offline_flag(tmp_path):
+    """Verify that --offline flag works with snowflake target."""
+    result = runner.invoke(app, ["scan", "155149108183695360", "--offline"])
+    assert result.exit_code == 0
+    out = clean_output(result.stdout)
+    assert "Snowflake Telemetry" in out or "155149108183695360" in out
+
+
+def test_cli_scan_markdown_export(tmp_path):
+    """Verify that --md flag exports a markdown dossier."""
+    md_file = tmp_path / "dossier.md"
+    result = runner.invoke(app, ["scan", "155149108183695360", "--offline", "--md", str(md_file)])
+    assert result.exit_code == 0
+    assert md_file.exists()
+    content = md_file.read_text(encoding="utf-8")
+    assert "# Argus OSINT Dossier" in content
+    assert "155149108183695360" in content
+

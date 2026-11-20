@@ -318,8 +318,8 @@ def render_report_rich(report: InvestigationReport) -> None:
             )
         )
 
-    # 6. Gaming Ecosystem (Minecraft & Steam)
-    if report.gaming and (report.gaming.minecraft or report.gaming.steam):
+    # 6. Gaming Ecosystem (Minecraft, Steam, Roblox)
+    if report.gaming and (report.gaming.minecraft or report.gaming.steam or report.gaming.roblox):
         game_table = Table(box=box.SIMPLE_HEAVY, border_style="bright_blue", show_header=True)
         game_table.add_column("Gaming Platform", style="bold bright_blue", width=22)
         game_table.add_column("Identity & Telemetry", style="white")
@@ -350,6 +350,21 @@ def render_report_rich(report: InvestigationReport) -> None:
                 summary_preview = st.summary if len(st.summary) <= 120 else f"{st.summary[:117]}..."
                 st_info += f"\nBio / Summary: [dim]{safe_escape(summary_preview)}[/dim]"
             game_table.add_row("Steam Community", st_info)
+
+        if report.gaming.roblox:
+            rb = report.gaming.roblox
+            badge_text = " [bold green][Verified][/bold green]" if rb.has_verified_badge else ""
+            ban_text = " [bold red][BANNED][/bold red]" if rb.is_banned else ""
+            rb_info = (
+                f"Username: [bold]{safe_escape(rb.username)}[/bold]{badge_text}{ban_text}\n"
+                f"Display Name: [cyan]{safe_escape(rb.display_name)}[/cyan]\n"
+                f"User ID: [yellow]{rb.user_id}[/yellow]\n"
+                f"Profile Link: {make_link(rb.profile_url)}"
+            )
+            if rb.description:
+                desc_prev = rb.description if len(rb.description) <= 120 else f"{rb.description[:117]}..."
+                rb_info += f"\nBio: [dim]{safe_escape(desc_prev)}[/dim]"
+            game_table.add_row("Roblox", rb_info)
 
         console.print(
             Panel(
@@ -664,6 +679,8 @@ def render_report_rich(report: InvestigationReport) -> None:
         or leads.discovered_discord_ids
         or leads.discovered_discord_tags
         or leads.discovered_invites
+        or leads.discovered_phones
+        or leads.discovered_custom
         or leads.notes
     )
     if has_leads:
@@ -679,6 +696,12 @@ def render_report_rich(report: InvestigationReport) -> None:
         if leads.discovered_messaging:
             msg_lines = [f"[{safe_escape(m.platform)}] [magenta]{safe_escape(m.handle)}[/magenta]" for m in leads.discovered_messaging]
             leads_table.add_row("Messaging Handles", "\n".join(msg_lines))
+        if leads.discovered_phones:
+            phone_lines = [f"{safe_escape(p.e164)} ({safe_escape(p.country_name or 'Unknown Region')})" for p in leads.discovered_phones]
+            leads_table.add_row("Telephone Numbers", "\n".join(phone_lines))
+        if leads.discovered_custom:
+            custom_lines = [f"[{safe_escape(c.get('category', 'Custom'))}] {safe_escape(c.get('name'))}: {safe_escape(c.get('value'))}" for c in leads.discovered_custom]
+            leads_table.add_row("Custom Match Leads", "\n".join(custom_lines))
         if leads.discovered_discord_ids:
             leads_table.add_row("Discord User IDs", ", ".join(safe_escape(i) for i in leads.discovered_discord_ids))
         if leads.discovered_discord_tags:
@@ -783,6 +806,17 @@ def scan_command(
         "-w",
         help="Open HTML report in default browser (creates temporary file if --html is omitted).",
     ),
+    markdown: Optional[Path] = typer.Option(
+        None,
+        "--md",
+        "--markdown",
+        help="Save executive Markdown investigation dossier to specified file path.",
+    ),
+    offline: bool = typer.Option(
+        False,
+        "--offline",
+        help="Strict offline mode: execute local decoding and parsing without sending external network packets.",
+    ),
     proxy: Optional[str] = typer.Option(
         None,
         "--proxy",
@@ -796,8 +830,8 @@ def scan_command(
         help="HTTP timeout per module in seconds.",
     ),
 ) -> None:
-    """Smart scan: Automatically detects Snowflake ID or username and executes investigative pivots."""
-    config = get_config(timeout=timeout, proxy=proxy)
+    """Smart scan: Automatically detects Snowflake ID, username, or email and executes investigative pivots."""
+    config = get_config(timeout=timeout, proxy=proxy, offline=offline)
     orchestrator = InvestigationOrchestrator(config=config)
 
     report: InvestigationReport
@@ -863,6 +897,13 @@ def scan_command(
             if not json_output:
                 console.print(f"[bold green]HTML Report saved to:[/bold green] {saved_path.resolve()}")
 
+    if markdown:
+        from argus.report_markdown import save_markdown_report
+
+        saved_md = save_markdown_report(report, markdown)
+        if not json_output:
+            console.print(f"[bold green]Markdown Dossier saved to:[/bold green] {saved_md.resolve()}")
+
 
 @app.command(name="snowflake", context_settings=CONTEXT_SETTINGS)
 def snowflake_command(
@@ -891,6 +932,17 @@ def snowflake_command(
         "-w",
         help="Open HTML report in default browser (creates temporary file if --html is omitted).",
     ),
+    markdown: Optional[Path] = typer.Option(
+        None,
+        "--md",
+        "--markdown",
+        help="Save executive Markdown investigation dossier to specified file path.",
+    ),
+    offline: bool = typer.Option(
+        False,
+        "--offline",
+        help="Strict offline mode: decode snowflake without network API calls.",
+    ),
     proxy: Optional[str] = typer.Option(
         None,
         "--proxy",
@@ -912,7 +964,7 @@ def snowflake_command(
         )
         raise typer.Exit(code=1)
 
-    config = get_config(timeout=timeout, proxy=proxy)
+    config = get_config(timeout=timeout, proxy=proxy, offline=offline)
     orchestrator = InvestigationOrchestrator(config=config)
 
     if json_output:
@@ -965,6 +1017,13 @@ def snowflake_command(
             saved_path = save_html_report(report, html)
             if not json_output:
                 console.print(f"[bold green]HTML Report saved to:[/bold green] {saved_path.resolve()}")
+
+    if markdown:
+        from argus.report_markdown import save_markdown_report
+
+        saved_md = save_markdown_report(report, markdown)
+        if not json_output:
+            console.print(f"[bold green]Markdown Dossier saved to:[/bold green] {saved_md.resolve()}")
 
 
 @app.command(name="config", context_settings=CONTEXT_SETTINGS)
@@ -1132,6 +1191,42 @@ def tui_command(
     run_interactive_tui(report)
 
 
+@app.command(name="diff", context_settings=CONTEXT_SETTINGS)
+def diff_command(
+    file_a: Path = typer.Argument(..., help="Path to baseline investigation report JSON."),
+    file_b: Path = typer.Argument(..., help="Path to compared investigation report JSON."),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Output raw JSON diff format.",
+    ),
+) -> None:
+    """Compare two historical Argus investigation reports and highlight intelligence changes."""
+    from argus.modules.diff import compare_investigation_reports, render_diff_rich
+
+    if not file_a.exists():
+        console.print(f"[bold red]Error:[/bold red] Baseline report file '{file_a}' not found.")
+        raise typer.Exit(code=1)
+    if not file_b.exists():
+        console.print(f"[bold red]Error:[/bold red] Comparison report file '{file_b}' not found.")
+        raise typer.Exit(code=1)
+
+    try:
+        report_a = InvestigationReport.model_validate_json(file_a.read_text(encoding="utf-8"))
+        report_b = InvestigationReport.model_validate_json(file_b.read_text(encoding="utf-8"))
+    except Exception as exc:
+        console.print(f"[bold red]Error:[/bold red] Failed to parse report JSON: {exc}")
+        raise typer.Exit(code=1)
+
+    diff = compare_investigation_reports(report_a, report_b)
+    if json_output:
+        import json
+        print(json.dumps(diff, indent=2))
+    else:
+        render_diff_rich(diff, console=console)
+
+
 @app.command(name="man", context_settings=CONTEXT_SETTINGS)
 def man_command(
     roff: bool = typer.Option(
@@ -1194,6 +1289,10 @@ def man_command(
         "Launch interactive terminal dashboard with menu-driven navigation across investigation sections.",
     )
     cmd_table.add_row(
+        "diff <file_a> <file_b>",
+        "Compare two historical JSON investigation reports and highlight intelligence changes.",
+    )
+    cmd_table.add_row(
         "man [--roff]",
         "Display this terminal manual page or emit standard UNIX troff format.",
     )
@@ -1207,6 +1306,7 @@ def man_command(
 
     opt_table.add_row("-v, --version", "Display tool version and exit.")
     opt_table.add_row("-h, --help", "Display help synopsis and exit (available on all commands).")
+    opt_table.add_row("--offline", "Run in strict offline mode without sending external network packets.")
     opt_table.add_row("-p, --pivot", "Automatically pivot into cross-platform username sweep when scanning a Snowflake ID.")
     opt_table.add_row("-a, --all-sites", "Check all sites in the Maigret database instead of top-ranked dev/gaming platforms.")
     opt_table.add_row("-E, --email-sites", "Check account registrations on all 120+ platforms for discovered emails via Holehe.")
@@ -1216,6 +1316,7 @@ def man_command(
     opt_table.add_row("-j, --json", "Output raw formatted JSON to stdout for pipelines or jq.")
     opt_table.add_row("-o, --out <PATH>", "Save structured JSON investigation report to file.")
     opt_table.add_row("-H, --html <PATH>", "Save standalone HTML investigation report to file.")
+    opt_table.add_row("--md <PATH>", "Save executive Markdown investigation dossier to specified file path.")
     opt_table.add_row("-w, --view", "Open standalone HTML report in default browser (creates temporary file if --html is omitted).")
     opt_table.add_row("-x, --proxy <URL>", "Route network requests through HTTP/HTTPS or SOCKS5 proxy (e.g. socks5://127.0.0.1:9050).")
     opt_table.add_row("-t, --timeout <SEC>", "Configurable HTTP timeout in seconds per module (default: 15s).")

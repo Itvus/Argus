@@ -145,9 +145,9 @@ def display_discord_panel(report: InvestigationReport) -> None:
 
 
 def display_gaming_panel(report: InvestigationReport) -> None:
-    """Render gaming ecosystem profiles (Minecraft, Steam)."""
-    if not report.gaming or (not report.gaming.minecraft and not report.gaming.steam):
-        console.print("[dim]No public Minecraft or Steam profiles matched this handle.[/dim]")
+    """Render gaming ecosystem profiles (Minecraft, Steam, Roblox)."""
+    if not report.gaming or (not report.gaming.minecraft and not report.gaming.steam and not report.gaming.roblox):
+        console.print("[dim]No public Minecraft, Steam, or Roblox profiles matched this handle.[/dim]")
         return
 
     tbl = Table(box=box.SIMPLE_HEAVY, border_style="bright_blue", show_header=True)
@@ -179,6 +179,21 @@ def display_gaming_panel(report: InvestigationReport) -> None:
         if st.location:
             details += f"\nLocation: {safe_escape(st.location)}"
         tbl.add_row("Steam Community", details)
+
+    if report.gaming.roblox:
+        rb = report.gaming.roblox
+        badge_text = " [bold green][Verified][/bold green]" if rb.has_verified_badge else ""
+        ban_text = " [bold red][BANNED][/bold red]" if rb.is_banned else ""
+        details = (
+            f"Username: [bold]{safe_escape(rb.username)}[/bold]{badge_text}{ban_text}\n"
+            f"Display Name: [cyan]{safe_escape(rb.display_name)}[/cyan]\n"
+            f"User ID: [yellow]{rb.user_id}[/yellow]\n"
+            f"Profile Link: {safe_escape(rb.profile_url)}"
+        )
+        if rb.description:
+            desc_prev = rb.description if len(rb.description) <= 120 else f"{rb.description[:117]}..."
+            details += f"\nBio: [dim]{safe_escape(desc_prev)}[/dim]"
+        tbl.add_row("Roblox", details)
 
     console.print(
         Panel(
@@ -216,6 +231,12 @@ def display_leads_panel(report: InvestigationReport) -> None:
     if leads.discovered_messaging:
         msg_lines = [f"[{safe_escape(m.platform)}] [magenta]{safe_escape(m.handle)}[/magenta]" for m in leads.discovered_messaging]
         tbl.add_row("Messaging Handles", "\n".join(msg_lines))
+    if leads.discovered_phones:
+        phone_lines = [f"{safe_escape(p.e164)} ({safe_escape(p.country_name or 'Unknown Region')})" for p in leads.discovered_phones]
+        tbl.add_row("Telephone Numbers", "\n".join(phone_lines))
+    if leads.discovered_custom:
+        custom_lines = [f"[{safe_escape(c.get('category', 'Custom'))}] {safe_escape(c.get('name'))}: {safe_escape(c.get('value'))}" for c in leads.discovered_custom]
+        tbl.add_row("Custom Matches", "\n".join(custom_lines))
     if leads.discovered_discord_ids:
         tbl.add_row("Discovered Discord IDs", ", ".join(safe_escape(i) for i in leads.discovered_discord_ids))
     if leads.discovered_discord_tags:
