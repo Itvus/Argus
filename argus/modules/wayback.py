@@ -39,7 +39,7 @@ async def fetch_wayback_snapshots(
     candidate_urls = urls[:5]
 
     async with httpx.AsyncClient(**client_kwargs) as client:
-        for idx, target_url in enumerate(candidate_urls, start=1):
+        async def fetch_single_cdx(idx: int, target_url: str) -> None:
             if progress_callback:
                 progress_callback("Wayback Snapshots", idx, len(candidate_urls), f"Checking {target_url}")
             try:
@@ -65,7 +65,10 @@ async def fetch_wayback_snapshots(
                                     )
                                 )
             except Exception:
-                continue
+                pass
+
+        tasks = [fetch_single_cdx(idx, u) for idx, u in enumerate(candidate_urls, start=1)]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     status = "success" if snapshots else "no_hits"
     msg = f"Discovered {len(snapshots)} historical archive snapshots" if snapshots else "No historical snapshots found"

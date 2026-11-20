@@ -493,6 +493,23 @@ class InvestigationOrchestrator:
             kb_prof, kb_stat = keybase_res
             if kb_prof:
                 report.keybase = kb_prof
+                # Add verified Keybase proofs as confirmed social profiles if not already present
+                for pr in kb_prof.proofs:
+                    if pr.proof_url and not any(p.url.lower() == pr.proof_url.lower() for p in report.social_profiles):
+                        report.social_profiles.append(
+                            SocialProfile(
+                                platform=pr.service.capitalize(),
+                                url=pr.proof_url,
+                                status="Verified (Keybase)",
+                            )
+                        )
+                # Add crypto addresses from Keybase
+                for c_entry in kb_prof.crypto_addresses:
+                    c_addr = c_entry.get("address")
+                    c_net = c_entry.get("network", "Crypto").capitalize()
+                    if c_addr and not any(existing.address.lower() == c_addr.lower() for existing in report.pivot_leads.discovered_crypto):
+                        from argus.models import CryptoLead
+                        report.pivot_leads.discovered_crypto.append(CryptoLead(network=c_net, address=c_addr))
             report.module_statuses.append(kb_stat)
 
         # Process Package Registries results
@@ -500,6 +517,12 @@ class InvestigationOrchestrator:
             pkgs, pkg_stat = package_res
             report.packages.extend(pkgs)
             report.module_statuses.append(pkg_stat)
+            # Chain package author emails into discovered emails for breach/holehe pivoting
+            for pkg in pkgs:
+                if pkg.author_email and "@" in pkg.author_email:
+                    p_em = pkg.author_email.strip().lower()
+                    if p_em not in report.pivot_leads.discovered_emails:
+                        report.pivot_leads.discovered_emails.append(p_em)
 
         # 2. Automated Pivot into Breach Databases & Infostealer Intelligence
         all_emails = list(set(report.pivot_leads.discovered_emails))

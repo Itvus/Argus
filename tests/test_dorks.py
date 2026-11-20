@@ -16,3 +16,14 @@ def test_generate_google_dorks():
     for d in dorks:
         assert d.url.startswith("https://www.google.com/search?q=")
         assert "cyber_operative" in d.query or "operative@proton.me" in d.query
+
+
+def test_generate_google_dorks_snowflake():
+    dorks = generate_google_dorks("155149108183695360")
+    assert len(dorks) >= 4
+    categories = {d.category for d in dorks}
+    assert "Discord Channel & Message Archives" in categories
+    assert "Bot Audit & Moderation Logs" in categories
+    assert "GitHub Code Search (Bots & Configs)" in categories
+    for d in dorks:
+        assert "155149108183695360" in d.query

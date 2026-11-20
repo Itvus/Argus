@@ -1818,6 +1818,14 @@ def render_html_report(report: InvestigationReport) -> str:
         canvas.style.cursor = "grab";
       }});
 
+      canvas.addEventListener("dblclick", e => {{
+        const pos = getCanvasPos(e);
+        const hit = getNodeAt(pos.x, pos.y);
+        if (hit && hit.sub && hit.sub.startsWith("http")) {{
+          window.open(hit.sub, "_blank", "noopener,noreferrer");
+        }}
+      }});
+
       canvas.addEventListener("mousemove", e => {{
         const pos = getCanvasPos(e);
         if (isDragging && draggedNode) {{
@@ -1830,7 +1838,8 @@ def render_html_report(report: InvestigationReport) -> str:
             tooltip.style.display = "block";
             tooltip.style.left = (e.clientX - canvas.getBoundingClientRect().left + 15) + "px";
             tooltip.style.top = (e.clientY - canvas.getBoundingClientRect().top + 15) + "px";
-            tooltip.innerHTML = "<strong>" + hit.label + "</strong><br><span style='color:#94a3b8'>" + (hit.sub || hit.type) + "</span>";
+            const dblHint = (hit.sub && hit.sub.startsWith("http")) ? "<br><span style='color:#38bdf8;font-size:10px;'>Double-click to open link</span>" : "";
+            tooltip.innerHTML = "<strong>" + hit.label + "</strong><br><span style='color:#94a3b8'>" + (hit.sub || hit.type) + "</span>" + dblHint;
           }} else if (tooltip) {{
             tooltip.style.display = "none";
           }}

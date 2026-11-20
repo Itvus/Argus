@@ -36,7 +36,7 @@ async def lookup_openpgp_keys(
         client_kwargs["proxy"] = proxy
 
     async with httpx.AsyncClient(**client_kwargs) as client:
-        for idx, email in enumerate(emails, start=1):
+        async def fetch_single_email(idx: int, email: str) -> None:
             if progress_callback:
                 progress_callback("OpenPGP Keys", idx, len(emails), f"Auditing {email}")
             try:
@@ -53,7 +53,10 @@ async def lookup_openpgp_keys(
                         )
                     )
             except Exception:
-                continue
+                pass
+
+        tasks = [fetch_single_email(idx, em) for idx, em in enumerate(emails, start=1)]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     status = "success" if records else "no_hits"
     msg = f"Found {len(records)} OpenPGP public key(s)" if records else "No keys found on keys.openpgp.org"

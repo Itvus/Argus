@@ -377,6 +377,13 @@ async def fetch_github_pivot(
             except Exception:
                 pass
 
+            # Check for public profile email
+            public_email = p_data.get("email")
+            if public_email and "@" in public_email:
+                clean_pub = public_email.strip().lower()
+                if not clean_pub.endswith("@users.noreply.github.com") and not clean_pub.endswith(".local"):
+                    commit_emails.add(clean_pub)
+
             lead = GitHubPivotLead(
                 username=clean_username,
                 profile_url=p_data.get("html_url") or f"https://github.com/{clean_username}",

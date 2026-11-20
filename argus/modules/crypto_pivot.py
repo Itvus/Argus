@@ -25,20 +25,45 @@ def extract_crypto_wallets(text_sources: list[str]) -> tuple[list[CryptoLeadDeta
         # Ethereum / EVM
         for match in ETH_PATTERN.finditer(text):
             addr = match.group(1)
-            if addr.lower() not in seen:
-                seen.add(addr.lower())
-                details.append(
-                    CryptoLeadDetail(
-                        network="Ethereum",
-                        address=addr,
-                        explorer_url=f"https://etherscan.io/address/{addr}",
+            # Filter out git commit/tree/blob hashes labeled with commit or blob
+            seg_start = max(0, match.start() - 30)
+            seg_end = min(len(text), match.end() + 30)
+            local_seg = text[seg_start:seg_end].lower()
+            if re.search(r"\b(commit|tree|blob|sha1?)\b", local_seg):
+                continue
+
+            ctx_start = max(0, match.start() - 40)
+            ctx_end = min(len(text), match.end() + 40)
+            ctx_window = text[ctx_start:ctx_end].lower()
+
+            has_mixed_case = any(c.isupper() for c in addr[2:]) and any(c.islower() for c in addr[2:])
+            has_context = bool(re.search(r"\b(eth|ethereum|wallet|address|donate|tip|crypto|web3|ens|polygon|arbitrum|optimism)\b", ctx_window))
+
+            if has_mixed_case or has_context or "0x" in match.group(0):
+                if addr.lower() not in seen:
+                    seen.add(addr.lower())
+                    details.append(
+                        CryptoLeadDetail(
+                            network="Ethereum",
+                            address=addr,
+                            explorer_url=f"https://etherscan.io/address/{addr}",
+                        )
                     )
-                )
-                leads.append(CryptoLead(network="Ethereum", address=addr))
+                    leads.append(CryptoLead(network="Ethereum", address=addr))
 
         # Bitcoin
         for match in BTC_PATTERN.finditer(text):
             addr = match.group(1)
+            # If Bech32 (bc1...), it's unambiguously Bitcoin
+            is_bech32 = addr.lower().startswith("bc1")
+            if not is_bech32:
+                # Require crypto context for Base58 (1... or 3...)
+                ctx_start = max(0, match.start() - 40)
+                ctx_end = min(len(text), match.end() + 40)
+                ctx_window = text[ctx_start:ctx_end].lower()
+                if not re.search(r"\b(btc|bitcoin|wallet|donate|tip|crypto)\b", ctx_window):
+                    continue
+
             if addr not in seen:
                 seen.add(addr)
                 details.append(

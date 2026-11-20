@@ -25,9 +25,12 @@ def extract_custom_domains(emails: list[str]) -> list[str]:
         clean = em.strip().lower()
         if "@" in clean:
             domain = clean.split("@")[-1].strip()
+            # Ensure domain has valid TLD and is not an IP address or localhost
             if domain and domain not in FREE_MAIL_DOMAINS and "." in domain:
-                if domain not in custom:
-                    custom.append(domain)
+                parts = domain.split(".")
+                if len(parts) >= 2 and parts[-1].isalpha() and len(parts[-1]) >= 2:
+                    if domain not in custom:
+                        custom.append(domain)
     return custom
 
 
@@ -37,7 +40,7 @@ async def recon_domain(
     proxy: Optional[str] = None,
     progress_callback: Optional[Callable[[str, int, int, str], None]] = None,
 ) -> tuple[Optional[DomainReconRecord], ModuleStatus]:
-    """Perform RDAP WHOIS lookup and crt.sh certificate transparency enumeration."""
+    """Perform RDAP WHOIS lookup and crt.sh certificate transparency enumeration concurrently."""
     clean_domain = domain.strip().lower()
     if progress_callback:
         progress_callback("Domain Recon", 0, 1, f"Querying RDAP and crt.sh for {clean_domain}...")
@@ -52,61 +55,61 @@ async def recon_domain(
         client_kwargs["proxy"] = proxy
 
     async with httpx.AsyncClient(**client_kwargs) as client:
-        # 1. Query RDAP
-        try:
-            rdap_resp = await client.get(
-                f"https://rdap.org/domain/{clean_domain}",
-                headers={"Accept": "application/json", "User-Agent": "Argus-OSINT/1.0"},
-            )
-            if rdap_resp.status_code == 200:
-                data = rdap_resp.json()
-                # Extract nameservers
-                ns_list = data.get("nameservers", [])
-                for ns in ns_list:
-                    ldh = ns.get("ldhName")
-                    if ldh and ldh.lower() not in nameservers:
-                        nameservers.append(ldh.lower())
-                # Extract events (registration date)
-                events = data.get("events", [])
-                for ev in events:
-                    if ev.get("eventAction") == "registration":
-                        created_date = ev.get("eventDate")
-                        break
-                # Extract entities / registrar
-                entities = data.get("entities", [])
-                for ent in entities:
-                    roles = ent.get("roles", [])
-                    if "registrar" in roles:
-                        vcard = ent.get("vcardArray", [])
-                        if len(vcard) > 1 and isinstance(vcard[1], list):
-                            for prop in vcard[1]:
-                                if len(prop) > 3 and prop[0] == "fn":
-                                    registrar = str(prop[3])
-                                    break
-        except Exception:
-            pass
+        async def fetch_rdap() -> None:
+            nonlocal registrar, created_date, nameservers
+            try:
+                rdap_resp = await client.get(
+                    f"https://rdap.org/domain/{clean_domain}",
+                    headers={"Accept": "application/json", "User-Agent": "Argus-OSINT/1.0"},
+                )
+                if rdap_resp.status_code == 200:
+                    data = rdap_resp.json()
+                    # Extract nameservers
+                    for ns in data.get("nameservers", []):
+                        ldh = ns.get("ldhName")
+                        if ldh and ldh.lower() not in nameservers:
+                            nameservers.append(ldh.lower())
+                    # Extract events (registration date)
+                    for ev in data.get("events", []):
+                        if ev.get("eventAction") == "registration":
+                            created_date = ev.get("eventDate")
+                            break
+                    # Extract entities / registrar
+                    for ent in data.get("entities", []):
+                        if "registrar" in ent.get("roles", []):
+                            vcard = ent.get("vcardArray", [])
+                            if len(vcard) > 1 and isinstance(vcard[1], list):
+                                for prop in vcard[1]:
+                                    if len(prop) > 3 and prop[0] == "fn":
+                                        registrar = str(prop[3])
+                                        break
+            except Exception:
+                pass
 
-        # 2. Query Certificate Transparency (crt.sh)
-        try:
-            crt_resp = await client.get(
-                f"https://crt.sh/?q=%.{clean_domain}&output=json",
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
-            )
-            if crt_resp.status_code == 200:
-                crt_entries = crt_resp.json()
-                if isinstance(crt_entries, list):
-                    for entry in crt_entries:
-                        name_val = entry.get("name_value", "")
-                        common_name = entry.get("common_name", "")
-                        for candidate in f"{name_val}\n{common_name}".split("\n"):
-                            cand = candidate.strip().lower()
-                            if cand.startswith("*."):
-                                cand = cand[2:]
-                            if cand.endswith(f".{clean_domain}") or cand == clean_domain:
-                                if cand not in subdomains and len(subdomains) < 30:
-                                    subdomains.append(cand)
-        except Exception:
-            pass
+        async def fetch_crt() -> None:
+            nonlocal subdomains
+            try:
+                crt_resp = await client.get(
+                    f"https://crt.sh/?q=%.{clean_domain}&output=json",
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                )
+                if crt_resp.status_code == 200:
+                    crt_entries = crt_resp.json()
+                    if isinstance(crt_entries, list):
+                        for entry in crt_entries:
+                            name_val = entry.get("name_value", "")
+                            common_name = entry.get("common_name", "")
+                            for candidate in f"{name_val}\n{common_name}".split("\n"):
+                                cand = candidate.strip().lower()
+                                if cand.startswith("*."):
+                                    cand = cand[2:]
+                                if cand.endswith(f".{clean_domain}") or cand == clean_domain:
+                                    if cand not in subdomains and len(subdomains) < 30:
+                                        subdomains.append(cand)
+            except Exception:
+                pass
+
+        await asyncio.gather(fetch_rdap(), fetch_crt(), return_exceptions=True)
 
     if not registrar and not created_date and not nameservers and not subdomains:
         return None, ModuleStatus(

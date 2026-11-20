@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 from typing import Callable, Optional
 import httpx
@@ -37,7 +38,7 @@ async def inspect_avatar_metadata(
         client_kwargs["proxy"] = proxy
 
     async with httpx.AsyncClient(**client_kwargs) as client:
-        for idx, (platform, url) in enumerate(avatar_sources, start=1):
+        async def inspect_single(idx: int, platform: str, url: str) -> None:
             if progress_callback:
                 progress_callback("Image Metadata", idx, len(avatar_sources), f"Inspecting {platform} avatar")
             try:
@@ -88,7 +89,10 @@ async def inspect_avatar_metadata(
                             )
                         )
             except Exception:
-                continue
+                pass
+
+        tasks = [inspect_single(idx, p, u) for idx, (p, u) in enumerate(avatar_sources, start=1)]
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     status = "success" if reports else "no_hits"
     msg = f"Inspected {len(reports)} avatars ({sum(1 for r in reports if r.has_exif)} had embedded EXIF tags)"

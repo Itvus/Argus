@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import urllib.parse
 from argus.models import GoogleDork
+from argus.modules.snowflake import is_valid_snowflake
 
 
 def generate_google_dorks(target: str, emails: list[str] = []) -> list[GoogleDork]:
@@ -17,32 +18,58 @@ def generate_google_dorks(target: str, emails: list[str] = []) -> list[GoogleDor
     if not clean_target:
         return []
 
-    dork_templates = [
-        (
-            "Pastes & Text Dumps",
-            f'(site:pastebin.com | site:rentry.co | site:justpaste.it | site:ghostbin.com) "{clean_target}"',
-        ),
-        (
-            "Telegram Channels & Chats",
-            f'site:t.me "{clean_target}"',
-        ),
-        (
-            "Source Code Secrets & Configs",
-            f'(site:github.com | site:gitlab.com) "{clean_target}" (password | token | key | secret)',
-        ),
-        (
-            "Discord Server Mentions",
-            f'"{clean_target}" (site:discord.com | site:discord.gg)',
-        ),
-        (
-            "Public Documents & PDFs",
-            f'"{clean_target}" (filetype:pdf | filetype:docx | filetype:txt | filetype:xlsx)',
-        ),
-        (
-            "Breach & Database Mentions",
-            f'"{clean_target}" ("database dump" | "breached" | "combo list" | "leaked")',
-        ),
-    ]
+    is_snowflake = is_valid_snowflake(clean_target)
+
+    if is_snowflake:
+        dork_templates = [
+            (
+                "Discord Channel & Message Archives",
+                f'site:discord.com/channels "{clean_target}"',
+            ),
+            (
+                "Bot Audit & Moderation Logs",
+                f'"{clean_target}" (ban | kick | mute | warn | audit | "user id")',
+            ),
+            (
+                "GitHub Code Search (Bots & Configs)",
+                f'site:github.com "{clean_target}"',
+            ),
+            (
+                "Discord Transparency & Indexers",
+                f'"{clean_target}" (site:discord.id | site:discordlookup.com | site:lookup.guru)',
+            ),
+            (
+                "Public Pastes & Text Dumps",
+                f'(site:pastebin.com | site:rentry.co | site:justpaste.it) "{clean_target}"',
+            ),
+        ]
+    else:
+        dork_templates = [
+            (
+                "Pastes & Text Dumps",
+                f'(site:pastebin.com | site:rentry.co | site:justpaste.it | site:ghostbin.com) "{clean_target}"',
+            ),
+            (
+                "Telegram Channels & Chats",
+                f'site:t.me "{clean_target}"',
+            ),
+            (
+                "Source Code Secrets & Configs",
+                f'(site:github.com | site:gitlab.com) "{clean_target}" (password | token | key | secret)',
+            ),
+            (
+                "Discord Server Mentions",
+                f'"{clean_target}" (site:discord.com | site:discord.gg)',
+            ),
+            (
+                "Public Documents & PDFs",
+                f'"{clean_target}" (filetype:pdf | filetype:docx | filetype:txt | filetype:xlsx)',
+            ),
+            (
+                "Breach & Database Mentions",
+                f'"{clean_target}" ("database dump" | "breached" | "combo list" | "leaked")',
+            ),
+        ]
 
     # Additional email-specific dorks if emails available
     if emails:
