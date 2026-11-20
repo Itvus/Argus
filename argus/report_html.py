@@ -518,6 +518,42 @@ def render_html_report(report: InvestigationReport) -> str:
         </div>
         """
 
+    # 6. Verified Email Registrations (Holehe)
+    email_recon_html = ""
+    if report.email_registrations:
+        total_recon_accs = sum(len(r.accounts) for r in report.email_registrations)
+        if total_recon_accs > 0:
+            recon_cards = []
+            for r in report.email_registrations:
+                if not r.accounts:
+                    continue
+                acc_pills = "".join(
+                    f"""<div class="lead-pill font-mono">
+                          <span class="tag">{html.escape(acc.platform)}</span>
+                          <a href="https://{html.escape(acc.domain)}" target="_blank" rel="noopener noreferrer" class="link-external font-bold">{html.escape(acc.domain)} {ICON_LINK}</a>
+                          {f'<span class="text-xs text-muted">Recovery: {html.escape(acc.email_recovery)}</span>' if acc.email_recovery else ''}
+                        </div>"""
+                    for acc in r.accounts
+                )
+                recon_cards.append(
+                    f"""
+                    <div class="lead-group">
+                      <span class="lead-group-title">Target Email: <span class="font-mono text-emerald">{html.escape(r.email)}</span> ({len(r.accounts)} confirmed)</span>
+                      <div class="lead-pills-wrap">{acc_pills}</div>
+                    </div>
+                    """
+                )
+            email_recon_html = f"""
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">{ICON_SHIELD} Verified Email Registrations ({total_recon_accs} Platforms)</span>
+              </div>
+              <div class="leads-container">
+                {''.join(recon_cards)}
+              </div>
+            </div>
+            """
+
     # 6. Raw JSON representation
     raw_json_str = html.escape(json.dumps(report.model_dump(), indent=2))
 
@@ -1147,6 +1183,7 @@ def render_html_report(report: InvestigationReport) -> str:
     {social_profiles_html}
     {leads_html}
     {enrichment_html}
+    {email_recon_html}
 
     <!-- Raw JSON Collapsible Drawer -->
     <details class="raw-json-drawer">

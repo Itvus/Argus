@@ -106,6 +106,7 @@ flowchart LR
 | 🔄 **Proxy Support (Tor / SOCKS5 / HTTP)** | ✅ Supported | Configurable `--proxy` / `-x` flag or `ARGUS_PROXY` environment variable |
 | 🎮 **Gaming Ecosystem Pivots** | ✅ Supported | Mojang API Minecraft UUID/skin render and Steam Community XML profiling |
 | 🪙 **Precision Crypto & Messaging Leads** | ✅ Supported | BTC, ETH (with commit filter), SOL, Telegram, Matrix, and Signal extraction |
+| 📧 **Email Account Probing (Holehe)** | ✅ Supported | Opt-in `--email-sites` / `-E` flag checking 120+ platforms for registered accounts |
 | 💻 **Interactive Terminal UI (TUI)** | ✅ Supported | Menu-driven terminal report inspection via `argus tui` / `argus explore` |
 | ⚙️ **Custom Extraction Patterns** | ⏳ Planned | User-defined regex rules in `~/.argus/patterns/` |
 
@@ -205,6 +206,12 @@ argus scan 155149108183695360 --pivot --view
 
 # Route requests through a SOCKS5 or Tor proxy
 argus scan torvalds --proxy socks5://127.0.0.1:9050
+
+# Probe 120+ platforms for account registrations on discovered emails
+argus scan torvalds --email-sites
+
+# Scan an email address directly across 120+ platforms
+argus scan target@example.com --email-sites
 
 # Pipe JSON directly into jq
 argus scan torvalds --json | jq .pivot_leads

@@ -128,6 +128,23 @@ class GamingProfiles(BaseModel):
     steam: Optional[SteamProfile] = None
 
 
+class EmailAccountResult(BaseModel):
+    """Discovered registered service for an email address via Holehe."""
+    platform: str
+    domain: str
+    rate_limit: bool = False
+    email_recovery: Optional[str] = None
+    phone_number: Optional[str] = None
+    other_info: Optional[str] = None
+
+
+class EmailRegistrationReport(BaseModel):
+    """Email registration check results across platforms (Holehe)."""
+    email: str
+    total_checked: int = 0
+    accounts: list[EmailAccountResult] = Field(default_factory=list)
+
+
 class PivotLeads(BaseModel):
     """Aggregated investigative leads discovered during pivoting."""
     discovered_emails: list[str] = Field(default_factory=list)
@@ -159,5 +176,6 @@ class InvestigationReport(BaseModel):
     breaches: list[BreachRecord] = Field(default_factory=list)
     github_pivot: Optional[GitHubPivotLead] = None
     gaming: Optional[GamingProfiles] = None
+    email_registrations: list[EmailRegistrationReport] = Field(default_factory=list)
     pivot_leads: PivotLeads = Field(default_factory=PivotLeads)
     module_statuses: list[ModuleStatus] = Field(default_factory=list)

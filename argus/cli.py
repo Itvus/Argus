@@ -375,6 +375,38 @@ def render_report_rich(report: InvestigationReport) -> None:
             )
         )
 
+    # 7b. Verified Email Registrations (Holehe)
+    if report.email_registrations:
+        total_accounts = sum(len(r.accounts) for r in report.email_registrations)
+        if total_accounts > 0:
+            reg_table = Table(box=box.SIMPLE_HEAVY, border_style="cyan", show_header=True)
+            reg_table.add_column("Email", style="bold green", width=24)
+            reg_table.add_column("Platform", style="bold cyan", width=18)
+            reg_table.add_column("Domain", style="white", width=22)
+            reg_table.add_column("Recovery / Details", style="dim white")
+
+            for reg in report.email_registrations:
+                for acc in reg.accounts:
+                    extra_details = []
+                    if acc.email_recovery:
+                        extra_details.append(f"Recovery: [yellow]{acc.email_recovery}[/yellow]")
+                    if acc.phone_number:
+                        extra_details.append(f"Phone: [yellow]{acc.phone_number}[/yellow]")
+                    if acc.rate_limit:
+                        extra_details.append("[dim red](Rate Limited)[/dim red]")
+                    detail_str = " | ".join(extra_details) if extra_details else "[dim]Registered Account[/dim]"
+
+                    reg_table.add_row(reg.email, acc.platform, acc.domain, detail_str)
+
+            console.print(
+                Panel(
+                    reg_table,
+                    title=f"[bold cyan]Verified Email Accounts ({total_accounts} Across Holehe Providers)[/bold cyan]",
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                )
+            )
+
     # 8. Aggregated Pivot Leads
     leads = report.pivot_leads
     has_leads = (
@@ -456,6 +488,12 @@ def scan_command(
         "-a",
         help="Check all sites supported by Maigret instead of top-ranked sites.",
     ),
+    email_sites: bool = typer.Option(
+        False,
+        "--email-sites",
+        "-E",
+        help="Check account registration on all 120+ platforms for discovered emails (Holehe).",
+    ),
     json_output: bool = typer.Option(
         False,
         "--json",
@@ -506,6 +544,7 @@ def scan_command(
                 target=target,
                 pivot=pivot,
                 all_sites=all_sites,
+                email_sites=email_sites,
                 progress_callback=None,
             )
         )
@@ -518,6 +557,7 @@ def scan_command(
                 target=target,
                 pivot=pivot,
                 all_sites=all_sites,
+                email_sites=email_sites,
                 progress_callback=cb,
             )
 
@@ -729,6 +769,12 @@ def tui_command(
         "-a",
         help="Check all sites supported by Maigret.",
     ),
+    email_sites: bool = typer.Option(
+        False,
+        "--email-sites",
+        "-E",
+        help="Check account registration on all 120+ platforms for discovered emails (Holehe).",
+    ),
     proxy: Optional[str] = typer.Option(
         None,
         "--proxy",
@@ -777,6 +823,7 @@ def tui_command(
                 target=target,
                 pivot=pivot,
                 all_sites=all_sites,
+                email_sites=email_sites,
                 progress_callback=cb,
             )
 
@@ -866,6 +913,7 @@ def man_command(
     opt_table.add_row("-h, --help", "Display help synopsis and exit (available on all commands).")
     opt_table.add_row("-p, --pivot", "Automatically pivot into cross-platform username sweep when scanning a Snowflake ID.")
     opt_table.add_row("-a, --all-sites", "Check all sites in the Maigret database instead of top-ranked dev/gaming platforms.")
+    opt_table.add_row("-E, --email-sites", "Check account registrations on all 120+ platforms for discovered emails via Holehe.")
     opt_table.add_row("-j, --json", "Output raw formatted JSON to stdout for pipelines or jq.")
     opt_table.add_row("-o, --out <PATH>", "Save structured JSON investigation report to file.")
     opt_table.add_row("-H, --html <PATH>", "Save standalone HTML investigation report to file.")

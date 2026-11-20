@@ -18,6 +18,7 @@ from argus.models import (
     PivotLeads,
 )
 from argus.modules.discord_api import fetch_discord_profile
+from argus.modules.email_recon import check_email_registrations
 from argus.modules.enrichment import check_breaches, fetch_github_pivot, query_cordcat
 from argus.modules.gaming import fetch_gaming_profiles
 from argus.modules.snowflake import decode_snowflake, is_valid_snowflake
@@ -38,16 +39,18 @@ class InvestigationOrchestrator:
         target: str,
         pivot: bool = False,
         all_sites: bool = False,
+        email_sites: bool = False,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> InvestigationReport:
-        """Run complete investigation on target (Snowflake ID or username)."""
+        """Run complete investigation on target (Snowflake ID, username, or email)."""
         start_time = time.monotonic()
         clean_target = target.strip()
         timestamp_now = datetime.now(timezone.utc).isoformat()
 
         # Step 1: Detect Target Type
         is_snowflake = is_valid_snowflake(clean_target)
-        target_type = "snowflake" if is_snowflake else "username"
+        is_email = "@" in clean_target and "." in clean_target.split("@")[-1]
+        target_type = "snowflake" if is_snowflake else ("email" if is_email else "username")
 
         report = InvestigationReport(
             target=clean_target,
@@ -70,6 +73,7 @@ class InvestigationOrchestrator:
                 report=report,
                 pivot=pivot,
                 all_sites=all_sites,
+                email_sites=email_sites,
                 progress_callback=progress_callback,
             )
         else:
@@ -77,6 +81,7 @@ class InvestigationOrchestrator:
                 raw_username=clean_target,
                 report=report,
                 all_sites=all_sites,
+                email_sites=email_sites,
                 progress_callback=progress_callback,
             )
 
@@ -97,6 +102,7 @@ class InvestigationOrchestrator:
         report: InvestigationReport,
         pivot: bool,
         all_sites: bool,
+        email_sites: bool,
         progress_callback: Optional[ProgressCallback],
     ) -> None:
         """Execute Snowflake analysis and Discord/CordCat lookups, then optional pivot."""
@@ -189,6 +195,7 @@ class InvestigationOrchestrator:
                     username=discovered_username,
                     report=report,
                     all_sites=all_sites,
+                    email_sites=email_sites,
                     discord_dt_str=report.snowflake.created_at_utc if report.snowflake else None,
                     progress_callback=progress_callback,
                 )
@@ -198,14 +205,24 @@ class InvestigationOrchestrator:
         raw_username: str,
         report: InvestigationReport,
         all_sites: bool,
+        email_sites: bool,
         progress_callback: Optional[ProgressCallback],
     ) -> None:
         """Execute username enumeration and automatic lead pivoting."""
         clean_name = raw_username.lstrip("@").strip()
+        # If target itself is an email address, register it as a discovered email lead
+        if "@" in clean_name and "." in clean_name.split("@")[-1]:
+            if clean_name not in report.pivot_leads.discovered_emails:
+                report.pivot_leads.discovered_emails.append(clean_name)
+            sweep_name = clean_name.split("@")[0]
+        else:
+            sweep_name = clean_name
+
         await self._run_username_pivot_flow(
-            username=clean_name,
+            username=sweep_name,
             report=report,
             all_sites=all_sites,
+            email_sites=email_sites,
             discord_dt_str=None,
             progress_callback=progress_callback,
         )
@@ -260,6 +277,7 @@ class InvestigationOrchestrator:
         username: str,
         report: InvestigationReport,
         all_sites: bool,
+        email_sites: bool,
         discord_dt_str: Optional[str],
         progress_callback: Optional[ProgressCallback],
     ) -> None:
@@ -348,6 +366,29 @@ class InvestigationOrchestrator:
                     message="No email addresses discovered during pivot to check against breach databases.",
                 )
             )
+
+        # 3. Opt-in: Holehe Email Account Registration Checks
+        if email_sites:
+            all_emails = list(dict.fromkeys(report.pivot_leads.discovered_emails))
+            if all_emails:
+                for em in all_emails:
+                    reg_report, reg_status = await check_email_registrations(
+                        email=em,
+                        timeout=self.config.timeout,
+                        proxy=self.config.proxy,
+                        progress_callback=progress_callback,
+                    )
+                    if reg_report:
+                        report.email_registrations.append(reg_report)
+                    report.module_statuses.append(reg_status)
+            else:
+                report.module_statuses.append(
+                    ModuleStatus(
+                        module_name="Email Recon (Holehe)",
+                        status="skipped",
+                        message="No email addresses discovered to probe for registered accounts.",
+                    )
+                )
 
     @staticmethod
     def _merge_leads(target_leads: PivotLeads, new_leads: PivotLeads) -> None:

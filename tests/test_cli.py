@@ -74,6 +74,8 @@ def test_cli_proxy_flags_in_help():
     scan_help = clean_output(runner.invoke(app, ["scan", "-h"]).stdout)
     assert "--proxy" in scan_help
     assert "-x" in scan_help
+    assert "--email-sites" in scan_help
+    assert "-E" in scan_help
 
     sf_help = clean_output(runner.invoke(app, ["snowflake", "-h"]).stdout)
     assert "--proxy" in sf_help

@@ -33,6 +33,9 @@ def display_overview_panel(report: InvestigationReport) -> None:
     grid.add_row("Scan Execution Time:", f"{report.scan_duration_seconds}s")
     grid.add_row("Matched Social Profiles:", str(len(report.social_profiles)))
     grid.add_row("Personal Emails:", str(len(report.pivot_leads.discovered_emails)))
+    total_email_accs = sum(len(r.accounts) for r in report.email_registrations)
+    if total_email_accs > 0:
+        grid.add_row("Verified Email Accounts:", str(total_email_accs))
     grid.add_row("Crypto Wallet Addresses:", str(len(report.pivot_leads.discovered_crypto)))
     grid.add_row("Messaging Handles:", str(len(report.pivot_leads.discovered_messaging)))
     grid.add_row("Breach Incidents:", str(len(report.breaches)))
@@ -168,6 +171,14 @@ def display_leads_panel(report: InvestigationReport) -> None:
 
     if leads.discovered_emails:
         tbl.add_row("Personal Emails", "\n".join(f"[bold green]{em}[/bold green]" for em in leads.discovered_emails))
+    if report.email_registrations:
+        recon_lines = []
+        for r in report.email_registrations:
+            for a in r.accounts:
+                rec = f" [dim](Recovery: {a.email_recovery})[/dim]" if a.email_recovery else ""
+                recon_lines.append(f"• [cyan]{a.platform}[/cyan] ({a.domain}){rec}")
+        if recon_lines:
+            tbl.add_row("Email Accounts (Holehe)", "\n".join(recon_lines))
     if leads.discovered_crypto:
         crypto_lines = [f"[{c.network}] [cyan]{c.address}[/cyan]" for c in leads.discovered_crypto]
         tbl.add_row("Crypto Wallets", "\n".join(crypto_lines))
