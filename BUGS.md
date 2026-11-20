@@ -48,7 +48,7 @@ Fix: add `SocialProfile` to the `argus.models` import and cover the flow with `t
 
 - **Severity**: Critical
 - **Location**: `argus/cli.py` (`render_report_rich`, `print_banner`), `argus/tui.py` (all `display_*` panels)
-- **Status**: **Partially resolved** — CLI escaping covers Discord/GitHub/breach/social fields only; `tui.py` was never patched and the CLI leads panel still crashes. See BUG-19 and BUG-20.
+- **Status**: Resolved (All external data in CLI and TUI panels sanitized with `safe_escape()`; verified with hostile markup suites in `tests/test_cli.py` and `tests/test_tui.py`)
 
 Scraped values (GitHub bio, breach service names, profile URLs, handles, dork queries, platform names) are interpolated into a markup-enabled `Console`. Any `[/]` or unbalanced `[tag]` in external data raises `MarkupError` and the report never renders.
 
@@ -164,7 +164,7 @@ Re-audit after commits `5d9a78d` and `222539e`. `pytest` → 78 passed in 12.7s 
 | ID | Verified state | Evidence |
 |---|---|---|
 | BUG-01 | Fixed | `SocialProfile` imported; `tests/test_orchestrator.py` exercises the Keybase path |
-| BUG-02 | **Not fixed — partial** | CLI escapes 6 field groups; leads panel still raises `MarkupError`; `tui.py` has no escaping at all |
+| BUG-02 | Fixed | CLI and TUI panels sanitize all external fields via `safe_escape()`; verified in `tests/test_cli.py` & `tests/test_tui.py` |
 | BUG-03 | Fixed | Hardcoded key removed; missing key now returns `skipped`; `config` shows the variable |
 | BUG-04 | Fixed | Graph JSON escapes `<`, `>`, `&` |
 | BUG-05 | Fixed | Apex/ccTLD parsing in `get_base_domain` |
@@ -178,7 +178,7 @@ Re-audit after commits `5d9a78d` and `222539e`. `pytest` → 78 passed in 12.7s 
 | BUG-13 | Fixed | `asyncio.Lock()` around the counter |
 | BUG-14 | Fixed | `f"argus/{__version__} (+https://github.com/Itvus/Argus)"` |
 | BUG-15 | Fixed | Lowercase proxy variables honored |
-| BUG-16 | Open | Temporary HTML reports still accumulate |
+| BUG-16 | Fixed | `_cleanup_old_temp_reports()` automatically prunes stale temporary reports older than 1 hour |
 | BUG-17 | Open | Windows asyncio monkeypatch unchanged |
 | BUG-18 | Fixed | `DiscordProfile.bio` / `SteamProfile.summary` populated and wired into lead extraction |
 
@@ -187,14 +187,14 @@ Re-audit after commits `5d9a78d` and `222539e`. `pytest` → 78 passed in 12.7s 
 #### BUG-19 — `argus/tui.py` was never sanitized
 
 - **Severity**: Critical
-- **Status**: Open
+- **Status**: Resolved (Sanitized all 8 TUI panels via `safe_escape()`; verified in `tests/test_tui.py`)
 - **Reproduction**: build a report with `target="u[/]"` and call each `display_*` function. 6 of 8 panels raise `MarkupError` (overview, discord, leads, profiles, enrichment, diagnostics). `git log -- argus/tui.py` confirms the file was not touched by either fix commit.
 - The `--tui` / `argus explore` command path therefore still crashes on hostile scraped data even though `argus scan` is mostly hardened.
 
 #### BUG-20 — CLI escaping is incomplete; the leads panel still crashes
 
 - **Severity**: High
-- **Status**: Open
+- **Status**: Resolved (Applied `safe_escape()` to leads table and all remaining data panels; verified with hostile payload in `tests/test_cli.py`)
 - Fields still interpolated raw into Rich markup: `report.pivot_leads` (emails, crypto networks/addresses, messaging platforms/handles, Discord tags/IDs/invites, notes — `argus/cli.py:684-701`), CordCat aliases/FiveM IDs, Keybase profile/proofs/wallets, OpenPGP identities, domain recon registrar/subdomains, package name/description/author email, Wayback URLs, EXIF make/model/software, dorks, IntelX records, Hudson Rock infections, diagnostics messages, and the correlation reasons list.
 - Reproduction: `PivotLeads(discovered_emails=["a@b.com[/]"])` → `MarkupError: closing tag '[/]' at position 1 has nothing to close`.
 - `tests/test_cli.py::test_render_report_rich_hostile_markup` only covers the fields that were already escaped, so the gap is invisible to CI.
@@ -222,7 +222,7 @@ Re-audit after commits `5d9a78d` and `222539e`. `pytest` → 78 passed in 12.7s 
 #### BUG-24 — Unbounded fan-out in the email post-processing stage
 
 - **Severity**: Medium
-- **Status**: Open
+- **Status**: Resolved (Wrapped concurrent email tasks with `asyncio.Semaphore(4)` for Hudson Rock & domain recon, and `asyncio.Semaphore(2)` for Holehe)
 - The new `asyncio.gather` blocks in `_run_username_pivot_flow` launch Holehe (120+ modules at concurrency 15), Hudson Rock, and RDAP/crt.sh per address with no shared semaphore. Twenty discovered emails can mean hundreds of concurrent sockets to third-party APIs, inviting rate limits and bans — the exact behaviour the parallelization was meant to improve.
 
 #### BUG-25 — BUGS.md overstates what was fixed

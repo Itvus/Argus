@@ -123,11 +123,31 @@ def test_config_proxy_precedence(monkeypatch):
 def test_render_report_rich_hostile_markup():
     from argus.cli import render_report_rich
     from argus.models import (
+        AvatarMatch,
         BreachRecord,
+        CordCatRecord,
+        CorrelationScore,
+        CryptoLead,
         DiscordProfile,
+        DomainReconRecord,
+        GoogleDork,
+        EmailAccountResult,
+        EmailRegistrationReport,
         GitHubPivotLead,
+        HudsonRockReport,
+        ImageMetadataReport,
+        IntelXRecord,
+        IntelXReport,
         InvestigationReport,
+        KeybaseProfile,
+        KeybaseProof,
+        MessagingLead,
+        ModuleStatus,
+        PackageRecord,
+        PGPKeyRecord,
+        PivotLeads,
         SocialProfile,
+        StealerInfection,
     )
 
     report = InvestigationReport(
@@ -135,6 +155,20 @@ def test_render_report_rich_hostile_markup():
         target_type="username",
         scan_timestamp_utc="2026-11-20T17:00:00Z",
         scan_duration_seconds=1.2,
+        correlation=CorrelationScore(
+            confidence_score=85,
+            confidence_level="HIGH[/]",
+            reasons=["Matched on avatar hash [/] and username [foo]"],
+        ),
+        pivot_leads=PivotLeads(
+            discovered_emails=["bad[/]@evil.com"],
+            discovered_crypto=[CryptoLead(network="Bitcoin[/]", address="1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa[/]")],
+            discovered_messaging=[MessagingLead(platform="Telegram[/]", handle="@hostile[/]")],
+            discovered_discord_tags=["hostile#1234[/]"],
+            discovered_discord_ids=["155149108183695360[/]"],
+            discovered_invites=["https://discord.gg/evil[/]"],
+            notes=["hostile note with [/] markup and unclosed [tag"],
+        ),
         breaches=[
             BreachRecord(
                 query="a@b.c",
@@ -155,11 +189,118 @@ def test_render_report_rich_hostile_markup():
             global_name="[bad]global[/]",
             bio="bio with [closing] [/] tags",
         ),
+        cordcat=CordCatRecord(
+            user_id="155149108183695360",
+            historical_usernames=["bad_alias[/]"],
+            fivem_identifiers=["fivem:123[/]"],
+        ),
         social_profiles=[
             SocialProfile(
                 platform="Bad[/]Platform",
                 url="https://bad.com/u[/]",
                 status="Claimed[/]",
+            )
+        ],
+        packages=[
+            PackageRecord(
+                registry="pypi[/]",
+                name="bad-pkg[/]",
+                version="1.0.0[/]",
+                url="https://pypi.org/project/bad[/]",
+                description="desc with [tag][/]",
+                author_email="author[/]@pkg.org",
+            )
+        ],
+        domain_recon=[
+            DomainReconRecord(
+                domain="evil.com[/]",
+                registrar="Registrar[/]",
+                created_date="2020[/]",
+                subdomains=["sub[/].evil.com"],
+            )
+        ],
+        keybase=KeybaseProfile(
+            username="kb_user[/]",
+            bio="kb bio with [/]",
+            proofs=[KeybaseProof(service="twitter[/]", username="t[/]", proof_url="https://proof[/]")],
+            crypto_addresses=[{"currency": "btc[/]", "address": "addr[/]"}],
+        ),
+        pgp_keys=[
+            PGPKeyRecord(
+                key_id_or_fingerprint="FINGERPRINT[/]",
+                identities=["Jane Doe <jane@evil.com>[/]"],
+            )
+        ],
+        hudson_rock=[
+            HudsonRockReport(
+                query="u[/]",
+                query_type="username",
+                total_stealers=1,
+                infections=[
+                    StealerInfection(
+                        computer_name="PC[/]",
+                        operating_system="Windows[/]",
+                        stealer_family="RedLine[/]",
+                        date_compromised="2024[/]",
+                    )
+                ],
+            )
+        ],
+        dorks=[
+            GoogleDork(
+                category="Twitter[/]",
+                query="site:twitter.com evil[/]",
+                url="https://google.com/search?q=[/]",
+            )
+        ],
+        intelx=IntelXReport(
+            query="u[/]",
+            total_results=1,
+            records=[
+                IntelXRecord(
+                    system_id="sid[/]",
+                    name="Leak[/]",
+                    date="2024[/]",
+                )
+            ],
+        ),
+        image_metadata=[
+            ImageMetadataReport(
+                platform="Discord[/]",
+                url="https://img.com/a.jpg[/]",
+                make="Canon[/]",
+                model="EOS[/]",
+                software="Photoshop[/]",
+                datetime_original="2024[/]",
+            )
+        ],
+        avatar_matches=[
+            AvatarMatch(
+                platform_a="Discord[/]",
+                url_a="https://avatar.com/1.png[/]",
+                platform_b="GitHub[/]",
+                url_b="https://avatar.com/2.png[/]",
+                hamming_distance=0,
+                is_match=True,
+            )
+        ],
+        email_registrations=[
+            EmailRegistrationReport(
+                email="test@evil.com[/]",
+                total_checked=1,
+                accounts=[
+                    EmailAccountResult(
+                        platform="Twitter[/]",
+                        domain="twitter.com[/]",
+                    )
+                ],
+            )
+        ],
+        module_statuses=[
+            ModuleStatus(
+                module_name="Test[/]",
+                status="success[/]",
+                message="Ran with [/] error",
             )
         ],
     )

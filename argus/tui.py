@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -21,15 +22,22 @@ from argus.models import InvestigationReport
 console = Console()
 
 
+def safe_escape(v: Any) -> str:
+    """Escape arbitrary text for safe inclusion in Rich console markup."""
+    if v is None:
+        return ""
+    return escape(str(v))
+
+
 def display_overview_panel(report: InvestigationReport) -> None:
     """Render high-level investigation overview panel."""
     grid = Table.grid(padding=(0, 2))
     grid.add_column(style="bold yellow", justify="right")
     grid.add_column(style="white")
 
-    grid.add_row("Target Identifier:", report.target)
-    grid.add_row("Detected Entity Type:", report.target_type.upper())
-    grid.add_row("UTC Timestamp:", report.scan_timestamp_utc)
+    grid.add_row("Target Identifier:", safe_escape(report.target))
+    grid.add_row("Detected Entity Type:", safe_escape(report.target_type.upper()))
+    grid.add_row("UTC Timestamp:", safe_escape(report.scan_timestamp_utc))
     grid.add_row("Scan Execution Time:", f"{report.scan_duration_seconds}s")
     grid.add_row("Matched Social Profiles:", str(len(report.social_profiles)))
     grid.add_row("Personal Emails:", str(len(report.pivot_leads.discovered_emails)))
@@ -38,7 +46,7 @@ def display_overview_panel(report: InvestigationReport) -> None:
         grid.add_row("Verified Email Accounts:", str(total_email_accs))
     grid.add_row("Crypto Wallet Addresses:", str(len(report.pivot_leads.discovered_crypto)))
     if report.keybase:
-        grid.add_row("Keybase Identity:", f"[bold cyan]@{report.keybase.username}[/bold cyan] ({len(report.keybase.proofs)} proofs)")
+        grid.add_row("Keybase Identity:", f"[bold cyan]@{safe_escape(report.keybase.username)}[/bold cyan] ({len(report.keybase.proofs)} proofs)")
     if report.pgp_keys:
         grid.add_row("OpenPGP Keys:", str(len(report.pgp_keys)))
     if report.domain_recon:
@@ -58,7 +66,7 @@ def display_overview_panel(report: InvestigationReport) -> None:
         grid.add_row("Avatar Perceptual Matches:", f"[bold magenta]{len(report.avatar_matches)}[/bold magenta]")
     if report.correlation:
         corr_color = "green" if report.correlation.confidence_level == "HIGH" else ("yellow" if report.correlation.confidence_level == "MEDIUM" else "red")
-        grid.add_row("Identity Confidence:", f"[{corr_color} bold]{report.correlation.confidence_score}% ({report.correlation.confidence_level})[/{corr_color} bold]")
+        grid.add_row("Identity Confidence:", f"[{corr_color} bold]{report.correlation.confidence_score}% ({safe_escape(report.correlation.confidence_level)})[/{corr_color} bold]")
 
     console.print(
         Panel(
@@ -109,20 +117,20 @@ def display_discord_panel(report: InvestigationReport) -> None:
     tbl.add_column("Field", style="bold magenta", width=22)
     tbl.add_column("Value", style="white")
 
-    tbl.add_row("Username / Handle", f"@{dp.username}")
+    tbl.add_row("Username / Handle", f"@{safe_escape(dp.username)}")
     if dp.global_name:
-        tbl.add_row("Display Name", dp.global_name)
-    tbl.add_row("User ID", dp.id)
-    tbl.add_row("Public Badges", ", ".join(dp.badges) if dp.badges else "[dim]None[/dim]")
+        tbl.add_row("Display Name", safe_escape(dp.global_name))
+    tbl.add_row("User ID", safe_escape(dp.id))
+    tbl.add_row("Public Badges", ", ".join(safe_escape(b) for b in dp.badges) if dp.badges else "[dim]None[/dim]")
     if dp.avatar_url:
-        tbl.add_row("Avatar CDN", dp.avatar_url)
+        tbl.add_row("Avatar CDN", safe_escape(dp.avatar_url))
     if dp.reverse_image_urls:
         riu = dp.reverse_image_urls
         rev_text = (
-            f"• Google Lens: {riu.google_lens}\n"
-            f"• Yandex: {riu.yandex}\n"
-            f"• TinEye: {riu.tineye}\n"
-            f"• Bing Visual: {riu.bing_visual}"
+            f"• Google Lens: {safe_escape(riu.google_lens)}\n"
+            f"• Yandex: {safe_escape(riu.yandex)}\n"
+            f"• TinEye: {safe_escape(riu.tineye)}\n"
+            f"• Bing Visual: {safe_escape(riu.bing_visual)}"
         )
         tbl.add_row("Reverse Image Search", rev_text)
 
@@ -149,10 +157,10 @@ def display_gaming_panel(report: InvestigationReport) -> None:
     if report.gaming.minecraft:
         mc = report.gaming.minecraft
         details = (
-            f"Player Name: [bold]{mc.username}[/bold]\n"
-            f"Formatted UUID: [cyan]{mc.uuid_formatted}[/cyan]\n"
-            f"Raw Mojang ID: {mc.uuid}\n"
-            f"Skin Render CDN: [dim]{mc.skin_render_url}[/dim]"
+            f"Player Name: [bold]{safe_escape(mc.username)}[/bold]\n"
+            f"Formatted UUID: [cyan]{safe_escape(mc.uuid_formatted)}[/cyan]\n"
+            f"Raw Mojang ID: {safe_escape(mc.uuid)}\n"
+            f"Skin Render CDN: [dim]{safe_escape(mc.skin_render_url)}[/dim]"
         )
         tbl.add_row("Minecraft (Mojang)", details)
 
@@ -160,16 +168,16 @@ def display_gaming_panel(report: InvestigationReport) -> None:
         st = report.gaming.steam
         status = "[bold green]Clean[/bold green]" if not st.vac_banned else "[bold red]VAC BANNED[/bold red]"
         details = (
-            f"Custom URL: [bold]{st.custom_url}[/bold]\n"
-            f"SteamID64: [cyan]{st.steam_id_64}[/cyan]\n"
-            f"Profile URL: {st.profile_url}\n"
+            f"Custom URL: [bold]{safe_escape(st.custom_url)}[/bold]\n"
+            f"SteamID64: [cyan]{safe_escape(st.steam_id_64)}[/cyan]\n"
+            f"Profile URL: {safe_escape(st.profile_url)}\n"
             f"VAC Ban Status: {status}\n"
-            f"Online State: {st.online_state or 'Unknown'}"
+            f"Online State: {safe_escape(st.online_state or 'Unknown')}"
         )
         if st.real_name:
-            details += f"\nReal Name: {st.real_name}"
+            details += f"\nReal Name: {safe_escape(st.real_name)}"
         if st.location:
-            details += f"\nLocation: {st.location}"
+            details += f"\nLocation: {safe_escape(st.location)}"
         tbl.add_row("Steam Community", details)
 
     console.print(
@@ -190,30 +198,30 @@ def display_leads_panel(report: InvestigationReport) -> None:
     tbl.add_column("Discovered Data", style="white")
 
     if leads.discovered_emails:
-        tbl.add_row("Personal Emails", "\n".join(f"[bold green]{em}[/bold green]" for em in leads.discovered_emails))
+        tbl.add_row("Personal Emails", "\n".join(f"[bold green]{safe_escape(em)}[/bold green]" for em in leads.discovered_emails))
     if report.email_registrations:
         recon_lines = []
         for r in report.email_registrations:
             for a in r.accounts:
-                rec = f" [dim](Recovery: {a.email_recovery})[/dim]" if a.email_recovery else ""
-                recon_lines.append(f"• [cyan]{a.platform}[/cyan] ({a.domain}){rec}")
+                rec = f" [dim](Recovery: {safe_escape(a.email_recovery)})[/dim]" if a.email_recovery else ""
+                recon_lines.append(f"• [cyan]{safe_escape(a.platform)}[/cyan] ({safe_escape(a.domain)}){rec}")
         if recon_lines:
             tbl.add_row("Email Accounts (Holehe)", "\n".join(recon_lines))
     if report.avatar_matches:
-        match_lines = [f"• {m.platform_a} <-> {m.platform_b} (distance: {m.hamming_distance}/64 bits)" for m in report.avatar_matches]
+        match_lines = [f"• {safe_escape(m.platform_a)} <-> {safe_escape(m.platform_b)} (distance: {m.hamming_distance}/64 bits)" for m in report.avatar_matches]
         tbl.add_row("Avatar Matches (dHash)", "\n".join(match_lines))
     if leads.discovered_crypto:
-        crypto_lines = [f"[{c.network}] [cyan]{c.address}[/cyan]" for c in leads.discovered_crypto]
+        crypto_lines = [f"[{safe_escape(c.network)}] [cyan]{safe_escape(c.address)}[/cyan]" for c in leads.discovered_crypto]
         tbl.add_row("Crypto Wallets", "\n".join(crypto_lines))
     if leads.discovered_messaging:
-        msg_lines = [f"[{m.platform}] [magenta]{m.handle}[/magenta]" for m in leads.discovered_messaging]
+        msg_lines = [f"[{safe_escape(m.platform)}] [magenta]{safe_escape(m.handle)}[/magenta]" for m in leads.discovered_messaging]
         tbl.add_row("Messaging Handles", "\n".join(msg_lines))
     if leads.discovered_discord_ids:
-        tbl.add_row("Discovered Discord IDs", ", ".join(leads.discovered_discord_ids))
+        tbl.add_row("Discovered Discord IDs", ", ".join(safe_escape(i) for i in leads.discovered_discord_ids))
     if leads.discovered_discord_tags:
-        tbl.add_row("Legacy Discord Tags", ", ".join(leads.discovered_discord_tags))
+        tbl.add_row("Legacy Discord Tags", ", ".join(safe_escape(t) for t in leads.discovered_discord_tags))
     if leads.discovered_invites:
-        tbl.add_row("Discord Server Invites", "\n".join(leads.discovered_invites))
+        tbl.add_row("Discord Server Invites", "\n".join(safe_escape(inv) for inv in leads.discovered_invites))
 
     if tbl.row_count == 0:
         console.print("[dim]No high-confidence pivot leads were extracted for this target.[/dim]")
@@ -241,7 +249,7 @@ def display_profiles_panel(report: InvestigationReport) -> None:
     tbl.add_column("Profile URL / Handle", style="white")
 
     for p in report.social_profiles:
-        tbl.add_row(p.platform, p.status, p.url)
+        tbl.add_row(safe_escape(p.platform), safe_escape(p.status), safe_escape(p.url))
 
     console.print(
         Panel(
@@ -262,9 +270,9 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         c_table.add_column("Field", style="bold red", width=22)
         c_table.add_column("Data", style="white")
         if cc.historical_usernames:
-            c_table.add_row("Historical Aliases", ", ".join(cc.historical_usernames))
+            c_table.add_row("Historical Aliases", ", ".join(safe_escape(u) for u in cc.historical_usernames))
         if cc.fivem_identifiers:
-            c_table.add_row("FiveM Identifiers", ", ".join(cc.fivem_identifiers))
+            c_table.add_row("FiveM Identifiers", ", ".join(safe_escape(f) for f in cc.fivem_identifiers))
         console.print(Panel(c_table, title="[bold red]CordCat Indexer[/bold red]", border_style="red", box=box.ROUNDED))
 
     # 2. Breaches
@@ -275,8 +283,8 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         b_table.add_column("Query", style="cyan", width=24)
         b_table.add_column("Exposed Data Classes", style="yellow")
         for b in report.breaches:
-            classes = ", ".join(b.data_classes) if b.data_classes else "[dim]Unknown[/dim]"
-            b_table.add_row(b.service_name, b.breach_date or "N/A", b.query, classes)
+            classes = ", ".join(safe_escape(c) for c in b.data_classes) if b.data_classes else "[dim]Unknown[/dim]"
+            b_table.add_row(safe_escape(b.service_name), safe_escape(b.breach_date or "N/A"), safe_escape(b.query), classes)
         console.print(Panel(b_table, title=f"[bold red]Breach Exposure Records ({len(report.breaches)})[/bold red]", border_style="red", box=box.ROUNDED))
 
     # 3. GitHub
@@ -285,14 +293,14 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         g_table = Table(box=box.SIMPLE, show_header=False)
         g_table.add_column("Field", style="bold green", width=22)
         g_table.add_column("Data", style="white")
-        g_table.add_row("Username", f"@{gh.username}")
-        g_table.add_row("Profile URL", gh.profile_url)
+        g_table.add_row("Username", f"@{safe_escape(gh.username)}")
+        g_table.add_row("Profile URL", safe_escape(gh.profile_url))
         if gh.commit_emails:
-            g_table.add_row("Commit Author Emails", ", ".join(gh.commit_emails))
+            g_table.add_row("Commit Author Emails", ", ".join(safe_escape(e) for e in gh.commit_emails))
         if gh.created_at:
-            g_table.add_row("Creation Date", gh.created_at)
+            g_table.add_row("Creation Date", safe_escape(gh.created_at))
         if gh.age_comparison_discord:
-            g_table.add_row("Timeline vs Discord", gh.age_comparison_discord)
+            g_table.add_row("Timeline vs Discord", safe_escape(gh.age_comparison_discord))
         console.print(Panel(g_table, title="[bold green]GitHub Public Activity Audit[/bold green]", border_style="green", box=box.ROUNDED))
 
     # 4. Hudson Rock
@@ -304,9 +312,9 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         hr_tbl.add_column("Computer / OS", style="dim white")
         hr_tbl.add_column("Compromised Logins Sample", style="yellow")
         for inf in hr_infections:
-            comp_os = f"{inf.computer_name or 'N/A'} ({inf.operating_system or 'N/A'})"
-            logins = ", ".join(inf.top_logins[:4]) if inf.top_logins else "N/A"
-            hr_tbl.add_row(inf.stealer_family or "Unknown", inf.date_compromised or "N/A", comp_os, logins)
+            comp_os = f"{safe_escape(inf.computer_name or 'N/A')} ({safe_escape(inf.operating_system or 'N/A')})"
+            logins = ", ".join(safe_escape(l) for l in inf.top_logins[:4]) if inf.top_logins else "N/A"
+            hr_tbl.add_row(safe_escape(inf.stealer_family or "Unknown"), safe_escape(inf.date_compromised or "N/A"), comp_os, logins)
         console.print(Panel(hr_tbl, title=f"[bold red]Hudson Rock Infostealer Malware Compromises ({len(hr_infections)})[/bold red]", border_style="red", box=box.ROUNDED))
 
     # 5. Keybase & OpenPGP
@@ -316,10 +324,11 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         kp_tbl.add_column("Verified Identity & Keys", style="white")
         if report.keybase:
             kb = report.keybase
-            proofs_summary = ", ".join(f"{p.service}:{p.username}" for p in kb.proofs) if kb.proofs else "None"
-            kp_tbl.add_row("Keybase", f"@{kb.username} ({kb.full_name or 'N/A'})\nProofs: {proofs_summary}")
+            proofs_summary = ", ".join(f"{safe_escape(p.service)}:{safe_escape(p.username)}" for p in kb.proofs) if kb.proofs else "None"
+            kp_tbl.add_row("Keybase", f"@{safe_escape(kb.username)} ({safe_escape(kb.full_name or 'N/A')})\nProofs: {proofs_summary}")
         for pgp in report.pgp_keys:
-            kp_tbl.add_row("OpenPGP", f"{pgp.key_id_or_fingerprint} ({', '.join(pgp.identities)})")
+            identities = ", ".join(safe_escape(i) for i in pgp.identities) if pgp.identities else "Unspecified"
+            kp_tbl.add_row("OpenPGP", f"{safe_escape(pgp.key_id_or_fingerprint)} ({identities})")
         console.print(Panel(kp_tbl, title="[bold cyan]Cryptographic Identities (Keybase & OpenPGP)[/bold cyan]", border_style="cyan", box=box.ROUNDED))
 
     # 6. Personal Domain Recon
@@ -329,8 +338,8 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         dr_tbl.add_column("Registrar / Date", style="white", width=26)
         dr_tbl.add_column("Subdomains (crt.sh)", style="cyan")
         for d in report.domain_recon:
-            subs = ", ".join(d.subdomains[:6]) if d.subdomains else "None"
-            dr_tbl.add_row(d.domain, f"{d.registrar or 'N/A'}\n{d.created_date or 'N/A'}", subs)
+            subs = ", ".join(safe_escape(s) for s in d.subdomains[:6]) if d.subdomains else "None"
+            dr_tbl.add_row(safe_escape(d.domain), f"{safe_escape(d.registrar or 'N/A')}\n{safe_escape(d.created_date or 'N/A')}", subs)
         console.print(Panel(dr_tbl, title=f"[bold green]Personal Domain & Infrastructure Recon ({len(report.domain_recon)})[/bold green]", border_style="green", box=box.ROUNDED))
 
     # 7. Package Registries
@@ -340,7 +349,7 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         pkg_tbl.add_column("Package Name", style="bold white", width=20)
         pkg_tbl.add_column("Author Email", style="green")
         for pkg in report.packages:
-            pkg_tbl.add_row(pkg.registry, pkg.name, pkg.author_email or "N/A")
+            pkg_tbl.add_row(safe_escape(pkg.registry), safe_escape(pkg.name), safe_escape(pkg.author_email or "N/A"))
         console.print(Panel(pkg_tbl, title=f"[bold magenta]Package Registry Footprint ({len(report.packages)})[/bold magenta]", border_style="magenta", box=box.ROUNDED))
 
     # 8. Wayback Machine Snapshots
@@ -350,7 +359,7 @@ def display_enrichment_panel(report: InvestigationReport) -> None:
         wb_tbl.add_column("Target URL", style="white", width=35)
         wb_tbl.add_column("Archive Snapshot", style="blue underline")
         for snap in report.wayback_snapshots[:6]:
-            wb_tbl.add_row(snap.timestamp, snap.original_url, snap.archive_url)
+            wb_tbl.add_row(safe_escape(snap.timestamp), safe_escape(snap.original_url), safe_escape(snap.archive_url))
         console.print(Panel(wb_tbl, title=f"[bold yellow]Internet Archive Historical Snapshots ({len(report.wayback_snapshots)})[/bold yellow]", border_style="yellow", box=box.ROUNDED))
 
     if (
@@ -380,7 +389,7 @@ def display_diagnostics_panel(report: InvestigationReport) -> None:
 
     for m in report.module_statuses:
         status_color = "green" if m.status == "success" else ("yellow" if m.status == "skipped" else "red")
-        tbl.add_row(m.module_name, f"[{status_color}]{m.status.upper()}[/{status_color}]", m.message or "")
+        tbl.add_row(safe_escape(m.module_name), f"[{status_color}]{safe_escape(m.status.upper())}[/{status_color}]", safe_escape(m.message) or "")
 
     console.print(
         Panel(

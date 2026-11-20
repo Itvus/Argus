@@ -13,6 +13,7 @@ from __future__ import annotations
 import html
 import json
 import tempfile
+import time
 import webbrowser
 from collections import defaultdict
 from pathlib import Path
@@ -2242,8 +2243,24 @@ def save_html_report(report: InvestigationReport, output_path: Path) -> Path:
     return output_path
 
 
+def _cleanup_old_temp_reports() -> None:
+    """Prune temporary HTML reports older than 1 hour from previous sessions to prevent %TEMP% bloat."""
+    try:
+        temp_dir = Path(tempfile.gettempdir())
+        now = time.time()
+        for p in temp_dir.glob("argus_report_*.html"):
+            try:
+                if now - p.stat().st_mtime > 3600:
+                    p.unlink(missing_ok=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def view_html_report(report: InvestigationReport, custom_path: Optional[Path] = None) -> Path:
     """Save report to custom path or temporary file, and open in default browser."""
+    _cleanup_old_temp_reports()
     html_content = render_html_report(report)
 
     if custom_path:

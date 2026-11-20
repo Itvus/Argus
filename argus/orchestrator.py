@@ -571,17 +571,20 @@ class InvestigationOrchestrator:
             report.breaches.extend(breaches)
             report.module_statuses.append(b_status)
 
-            # Query Hudson Rock for discovered emails in parallel
-            hr_tasks = [
-                fetch_hudson_rock_intel(
-                    query=em,
-                    query_type="email",
-                    timeout=self.config.timeout,
-                    proxy=self.config.proxy,
-                    progress_callback=progress_callback,
-                )
-                for em in all_emails
-            ]
+            # Query Hudson Rock for discovered emails in parallel (bounded concurrency)
+            hr_sem = asyncio.Semaphore(4)
+
+            async def _bounded_hr(em: str):
+                async with hr_sem:
+                    return await fetch_hudson_rock_intel(
+                        query=em,
+                        query_type="email",
+                        timeout=self.config.timeout,
+                        proxy=self.config.proxy,
+                        progress_callback=progress_callback,
+                    )
+
+            hr_tasks = [_bounded_hr(em) for em in all_emails]
             hr_results = await asyncio.gather(*hr_tasks, return_exceptions=True)
             for res in hr_results:
                 if isinstance(res, tuple) and len(res) == 2:
@@ -600,18 +603,21 @@ class InvestigationOrchestrator:
             report.pgp_keys.extend(pgp_records)
             report.module_statuses.append(pgp_status)
 
-            # Custom domain infrastructure reconnaissance (RDAP + crt.sh) in parallel
+            # Custom domain infrastructure reconnaissance (RDAP + crt.sh) in parallel (bounded concurrency)
             custom_domains = extract_custom_domains(all_emails)
             if custom_domains:
-                domain_tasks = [
-                    recon_domain(
-                        domain=c_dom,
-                        timeout=self.config.timeout,
-                        proxy=self.config.proxy,
-                        progress_callback=progress_callback,
-                    )
-                    for c_dom in custom_domains
-                ]
+                dom_sem = asyncio.Semaphore(4)
+
+                async def _bounded_dom(c_dom: str):
+                    async with dom_sem:
+                        return await recon_domain(
+                            domain=c_dom,
+                            timeout=self.config.timeout,
+                            proxy=self.config.proxy,
+                            progress_callback=progress_callback,
+                        )
+
+                domain_tasks = [_bounded_dom(c_dom) for c_dom in custom_domains]
                 domain_results = await asyncio.gather(*domain_tasks, return_exceptions=True)
                 for res in domain_results:
                     if isinstance(res, tuple) and len(res) == 2:
@@ -628,19 +634,22 @@ class InvestigationOrchestrator:
                 )
             )
 
-        # 3. Opt-in: Holehe Email Account Registration Checks
+        # 3. Opt-in: Holehe Email Account Registration Checks (bounded concurrency)
         if email_sites:
             all_emails = list(dict.fromkeys(report.pivot_leads.discovered_emails))
             if all_emails:
-                holehe_tasks = [
-                    check_email_registrations(
-                        email=em,
-                        timeout=self.config.timeout,
-                        proxy=self.config.proxy,
-                        progress_callback=progress_callback,
-                    )
-                    for em in all_emails
-                ]
+                holehe_sem = asyncio.Semaphore(2)
+
+                async def _bounded_holehe(em: str):
+                    async with holehe_sem:
+                        return await check_email_registrations(
+                            email=em,
+                            timeout=self.config.timeout,
+                            proxy=self.config.proxy,
+                            progress_callback=progress_callback,
+                        )
+
+                holehe_tasks = [_bounded_holehe(em) for em in all_emails]
                 holehe_results = await asyncio.gather(*holehe_tasks, return_exceptions=True)
                 for res in holehe_results:
                     if isinstance(res, tuple) and len(res) == 2:

@@ -178,11 +178,11 @@ def render_report_rich(report: InvestigationReport) -> None:
     if report.correlation:
         corr = report.correlation
         color = "green" if corr.confidence_level == "HIGH" else ("yellow" if corr.confidence_level == "MEDIUM" else "red")
-        reasons_text = "\n".join(f"• {r}" for r in corr.reasons)
+        reasons_text = "\n".join(f"• {safe_escape(r)}" for r in corr.reasons)
         corr_table = Table.grid(padding=(0, 2))
         corr_table.add_column(style="bold white", width=22)
         corr_table.add_column()
-        corr_table.add_row("Confidence Rating:", f"[{color} bold]{corr.confidence_score}% ({corr.confidence_level})[/{color} bold]")
+        corr_table.add_row("Confidence Rating:", f"[{color} bold]{corr.confidence_score}% ({safe_escape(corr.confidence_level)})[/{color} bold]")
         corr_table.add_row("Correlation Evidence:", reasons_text)
         console.print(
             Panel(
@@ -278,9 +278,9 @@ def render_report_rich(report: InvestigationReport) -> None:
         cc_table.add_column("Data", style="white")
 
         if cc.historical_usernames:
-            cc_table.add_row("Historical Aliases", ", ".join(cc.historical_usernames))
+            cc_table.add_row("Historical Aliases", ", ".join(safe_escape(u) for u in cc.historical_usernames))
         if cc.fivem_identifiers:
-            cc_table.add_row("FiveM / CFX IDs", ", ".join(cc.fivem_identifiers))
+            cc_table.add_row("FiveM / CFX IDs", ", ".join(safe_escape(f) for f in cc.fivem_identifiers))
 
         console.print(
             Panel(
@@ -431,14 +431,14 @@ def render_report_rich(report: InvestigationReport) -> None:
                 for acc in reg.accounts:
                     extra_details = []
                     if acc.email_recovery:
-                        extra_details.append(f"Recovery: [yellow]{acc.email_recovery}[/yellow]")
+                        extra_details.append(f"Recovery: [yellow]{safe_escape(acc.email_recovery)}[/yellow]")
                     if acc.phone_number:
-                        extra_details.append(f"Phone: [yellow]{acc.phone_number}[/yellow]")
+                        extra_details.append(f"Phone: [yellow]{safe_escape(acc.phone_number)}[/yellow]")
                     if acc.rate_limit:
                         extra_details.append("[dim red](Rate Limited)[/dim red]")
                     detail_str = " | ".join(extra_details) if extra_details else "[dim]Registered Account[/dim]"
 
-                    reg_table.add_row(reg.email, acc.platform, acc.domain, detail_str)
+                    reg_table.add_row(safe_escape(reg.email), safe_escape(acc.platform), safe_escape(acc.domain), detail_str)
 
             console.print(
                 Panel(
@@ -459,7 +459,7 @@ def render_report_rich(report: InvestigationReport) -> None:
 
         for m in report.avatar_matches:
             verdict = "[bold green]Identical Avatar[/bold green]" if m.hamming_distance == 0 else f"[green]Perceptual Match ({m.hamming_distance}/64 bits diff)[/green]"
-            match_table.add_row(m.platform_a, m.platform_b, str(m.hamming_distance), verdict)
+            match_table.add_row(safe_escape(m.platform_a), safe_escape(m.platform_b), str(m.hamming_distance), verdict)
 
         console.print(
             Panel(
@@ -481,9 +481,9 @@ def render_report_rich(report: InvestigationReport) -> None:
             hr_table.add_column("Compromised Logins Sample", style="yellow")
 
             for inf in hr_infections:
-                comp_os = f"{inf.computer_name or 'N/A'} ({inf.operating_system or 'N/A'})"
-                logins = ", ".join(inf.top_logins[:4]) if inf.top_logins else "N/A"
-                hr_table.add_row(inf.stealer_family or "Unknown", inf.date_compromised or "N/A", comp_os, logins)
+                comp_os = f"{safe_escape(inf.computer_name or 'N/A')} ({safe_escape(inf.operating_system or 'N/A')})"
+                logins = ", ".join(safe_escape(l) for l in inf.top_logins[:4]) if inf.top_logins else "N/A"
+                hr_table.add_row(safe_escape(inf.stealer_family or "Unknown"), safe_escape(inf.date_compromised or "N/A"), comp_os, logins)
 
             console.print(
                 Panel(
@@ -501,7 +501,7 @@ def render_report_rich(report: InvestigationReport) -> None:
         dork_table.add_column("Search Dork & URL", style="white")
 
         for d in report.dorks:
-            dork_table.add_row(d.category, f"{d.query}\n[dim underline]{d.url}[/dim underline]")
+            dork_table.add_row(safe_escape(d.category), f"{safe_escape(d.query)}\n[dim underline]{safe_escape(d.url)}[/dim underline]")
 
         console.print(
             Panel(
@@ -518,7 +518,7 @@ def render_report_rich(report: InvestigationReport) -> None:
         ix_table.add_column("Selector Name", style="bold white")
         ix_table.add_column("Type", style="dim cyan")
         for r in report.intelx.records[:10]:
-            ix_table.add_row(r.name, r.media_type or "N/A")
+            ix_table.add_row(safe_escape(r.name), safe_escape(r.media_type or "N/A"))
 
         console.print(
             Panel(
@@ -537,20 +537,20 @@ def render_report_rich(report: InvestigationReport) -> None:
 
         if report.keybase:
             kb = report.keybase
-            kb_lines = [f"Username: @{kb.username}"]
+            kb_lines = [f"Username: @{safe_escape(kb.username)}"]
             if kb.full_name:
-                kb_lines.append(f"Full Name: {kb.full_name}")
+                kb_lines.append(f"Full Name: {safe_escape(kb.full_name)}")
             if kb.bio:
-                kb_lines.append(f"Bio: {kb.bio}")
+                kb_lines.append(f"Bio: {safe_escape(kb.bio)}")
             for proof in kb.proofs:
-                kb_lines.append(f"• Proof: [{proof.service}] {proof.username} ({proof.proof_url or 'Verified'})")
+                kb_lines.append(f"• Proof: [{safe_escape(proof.service)}] {safe_escape(proof.username)} ({safe_escape(proof.proof_url or 'Verified')})")
             for c_addr in kb.crypto_addresses:
-                kb_lines.append(f"• Wallet: [{c_addr.get('network', 'crypto')}] {c_addr.get('address')}")
+                kb_lines.append(f"• Wallet: [{safe_escape(c_addr.get('network', 'crypto'))}] {safe_escape(c_addr.get('address'))}")
             crypto_id_table.add_row("Keybase", "\n".join(kb_lines))
 
         for pgp in report.pgp_keys:
-            identities_str = ", ".join(pgp.identities) if pgp.identities else "Unspecified"
-            crypto_id_table.add_row("OpenPGP", f"{pgp.key_id_or_fingerprint}\nIdentities: {identities_str}\n[dim underline]{pgp.public_key_url or ''}[/dim underline]")
+            identities_str = ", ".join(safe_escape(i) for i in pgp.identities) if pgp.identities else "Unspecified"
+            crypto_id_table.add_row("OpenPGP", f"{safe_escape(pgp.key_id_or_fingerprint)}\nIdentities: {identities_str}\n[dim underline]{safe_escape(pgp.public_key_url or '')}[/dim underline]")
 
         console.print(
             Panel(
@@ -569,11 +569,11 @@ def render_report_rich(report: InvestigationReport) -> None:
         domain_table.add_column("Discovered Subdomains (crt.sh)", style="cyan")
 
         for d in report.domain_recon:
-            meta_str = f"Registrar: {d.registrar or 'N/A'}\nCreated: {d.created_date or 'N/A'}"
-            subs_str = ", ".join(d.subdomains[:8]) if d.subdomains else "[dim]No subdomains in CT logs[/dim]"
+            meta_str = f"Registrar: {safe_escape(d.registrar or 'N/A')}\nCreated: {safe_escape(d.created_date or 'N/A')}"
+            subs_str = ", ".join(safe_escape(s) for s in d.subdomains[:8]) if d.subdomains else "[dim]No subdomains in CT logs[/dim]"
             if len(d.subdomains) > 8:
                 subs_str += f" (+{len(d.subdomains) - 8} more)"
-            domain_table.add_row(d.domain, meta_str, subs_str)
+            domain_table.add_row(safe_escape(d.domain), meta_str, subs_str)
 
         console.print(
             Panel(
@@ -593,10 +593,10 @@ def render_report_rich(report: InvestigationReport) -> None:
         pkg_table.add_column("Description / Author Email", style="white")
 
         for pkg in report.packages:
-            desc = pkg.description or "[dim]No description[/dim]"
+            desc = safe_escape(pkg.description) if pkg.description else "[dim]No description[/dim]"
             if pkg.author_email:
-                desc += f"\n[bold green]Author Email:[/bold green] {pkg.author_email}"
-            pkg_table.add_row(pkg.registry, pkg.name, pkg.version or "N/A", desc)
+                desc += f"\n[bold green]Author Email:[/bold green] {safe_escape(pkg.author_email)}"
+            pkg_table.add_row(safe_escape(pkg.registry), safe_escape(pkg.name), safe_escape(pkg.version or "N/A"), desc)
 
         console.print(
             Panel(
@@ -615,7 +615,7 @@ def render_report_rich(report: InvestigationReport) -> None:
         wb_table.add_column("Internet Archive Wayback Snapshot", style="blue underline")
 
         for snap in report.wayback_snapshots[:8]:
-            wb_table.add_row(snap.timestamp, snap.original_url, snap.archive_url)
+            wb_table.add_row(safe_escape(snap.timestamp), safe_escape(snap.original_url), make_link(snap.archive_url))
 
         console.print(
             Panel(
@@ -635,16 +635,16 @@ def render_report_rich(report: InvestigationReport) -> None:
 
         for img in report.image_metadata:
             size_kb = f"{img.file_size_bytes // 1024} KB" if img.file_size_bytes else "N/A"
-            tech = f"{img.format} ({img.dimensions})\nMode: {img.color_mode} | Size: {size_kb}"
+            tech = f"{safe_escape(img.format)} ({safe_escape(img.dimensions)})\nMode: {safe_escape(img.color_mode)} | Size: {size_kb}"
             exif_desc = []
             if img.make or img.model:
-                exif_desc.append(f"Camera: {img.make or ''} {img.model or ''}".strip())
+                exif_desc.append(f"Camera: {safe_escape(img.make or '')} {safe_escape(img.model or '')}".strip())
             if img.software:
-                exif_desc.append(f"Software: {img.software}")
+                exif_desc.append(f"Software: {safe_escape(img.software)}")
             if img.datetime_original:
-                exif_desc.append(f"Date: {img.datetime_original}")
+                exif_desc.append(f"Date: {safe_escape(img.datetime_original)}")
             desc_str = "\n".join(exif_desc) if exif_desc else "[dim]Stripped (No EXIF)[/dim]"
-            img_table.add_row(img.platform, tech, desc_str)
+            img_table.add_row(safe_escape(img.platform), tech, desc_str)
 
         console.print(
             Panel(
@@ -672,21 +672,21 @@ def render_report_rich(report: InvestigationReport) -> None:
         leads_table.add_column("Values", style="white")
 
         if leads.discovered_emails:
-            leads_table.add_row("Emails", f"[bold green]{', '.join(leads.discovered_emails)}[/bold green]")
+            leads_table.add_row("Emails", f"[bold green]{', '.join(safe_escape(em) for em in leads.discovered_emails)}[/bold green]")
         if leads.discovered_crypto:
-            crypto_lines = [f"[{c.network}] [cyan]{c.address}[/cyan]" for c in leads.discovered_crypto]
+            crypto_lines = [f"[{safe_escape(c.network)}] [cyan]{safe_escape(c.address)}[/cyan]" for c in leads.discovered_crypto]
             leads_table.add_row("Crypto Wallets", "\n".join(crypto_lines))
         if leads.discovered_messaging:
-            msg_lines = [f"[{m.platform}] [magenta]{m.handle}[/magenta]" for m in leads.discovered_messaging]
+            msg_lines = [f"[{safe_escape(m.platform)}] [magenta]{safe_escape(m.handle)}[/magenta]" for m in leads.discovered_messaging]
             leads_table.add_row("Messaging Handles", "\n".join(msg_lines))
         if leads.discovered_discord_ids:
-            leads_table.add_row("Discord User IDs", ", ".join(leads.discovered_discord_ids))
+            leads_table.add_row("Discord User IDs", ", ".join(safe_escape(i) for i in leads.discovered_discord_ids))
         if leads.discovered_discord_tags:
-            leads_table.add_row("Discord Tags", ", ".join(leads.discovered_discord_tags))
+            leads_table.add_row("Discord Tags", ", ".join(safe_escape(t) for t in leads.discovered_discord_tags))
         if leads.discovered_invites:
-            leads_table.add_row("Discord Invites", ", ".join(leads.discovered_invites))
+            leads_table.add_row("Discord Invites", ", ".join(safe_escape(inv) for inv in leads.discovered_invites))
         if leads.notes:
-            leads_table.add_row("Investigative Notes", "\n".join(f"• {n}" for n in leads.notes))
+            leads_table.add_row("Investigative Notes", "\n".join(f"• {safe_escape(n)}" for n in leads.notes))
 
         console.print(
             Panel(
@@ -705,7 +705,7 @@ def render_report_rich(report: InvestigationReport) -> None:
 
     for ms in report.module_statuses:
         status_style = "green" if ms.status == "success" else ("yellow" if ms.status in ("skipped", "no_hits") else "red")
-        diag_table.add_row(ms.module_name, f"[{status_style}]{ms.status.upper()}[/{status_style}]", ms.message or "")
+        diag_table.add_row(safe_escape(ms.module_name), f"[{status_style}]{safe_escape(ms.status.upper())}[/{status_style}]", safe_escape(ms.message) or "")
 
     console.print(
         Panel(
