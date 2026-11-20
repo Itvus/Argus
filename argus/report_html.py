@@ -14,6 +14,7 @@ import html
 import json
 import tempfile
 import webbrowser
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +30,196 @@ ICON_PRINT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" v
 ICON_TERMINAL = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>"""
 ICON_SEARCH = """<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>"""
 ICON_ALERT = """<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>"""
+
+PLATFORM_CATEGORIES: dict[str, str] = {
+    # Gaming
+    "steam": "gaming",
+    "minecraft": "gaming",
+    "chess.com": "gaming",
+    "chess": "gaming",
+    "roblox": "gaming",
+    "xbox": "gaming",
+    "playstation": "gaming",
+    "epic games": "gaming",
+    "epic": "gaming",
+    "battle.net": "gaming",
+    "battlenet": "gaming",
+    "blizzard": "gaming",
+    "osu!": "gaming",
+    "osu": "gaming",
+    "speedrun.com": "gaming",
+    "speedrun": "gaming",
+    "itch.io": "gaming",
+    "itch": "gaming",
+    "twitch": "gaming",
+    "gog": "gaming",
+    "riot games": "gaming",
+    "riot": "gaming",
+    "nexus mods": "gaming",
+    "nexusmods": "gaming",
+    "vrchat": "gaming",
+    "newgrounds": "gaming",
+    "kongregate": "gaming",
+    "gamejolt": "gaming",
+    "origin": "gaming",
+    "ubisoft": "gaming",
+    "namemc": "gaming",
+    "tarkov": "gaming",
+    "faceit": "gaming",
+    "esl": "gaming",
+    "raptr": "gaming",
+    "pokemongo": "gaming",
+    "pokemon": "gaming",
+    # Developer / Tech
+    "github": "developer",
+    "gitlab": "developer",
+    "docker hub": "developer",
+    "docker": "developer",
+    "pypi": "developer",
+    "npm": "developer",
+    "crates.io": "developer",
+    "crates": "developer",
+    "bitbucket": "developer",
+    "replit": "developer",
+    "hackernews": "developer",
+    "hacker news": "developer",
+    "stackoverflow": "developer",
+    "stack overflow": "developer",
+    "stack exchange": "developer",
+    "kaggle": "developer",
+    "dev.to": "developer",
+    "codeberg": "developer",
+    "keybase": "developer",
+    "gist": "developer",
+    "codeforces": "developer",
+    "leetcode": "developer",
+    "codewars": "developer",
+    "sourceforge": "developer",
+    "launchpad": "developer",
+    "hugging face": "developer",
+    "huggingface": "developer",
+    "codepen": "developer",
+    "jsfiddle": "developer",
+    "pastebin": "developer",
+    "pnpm": "developer",
+    "rubygems": "developer",
+    "packagist": "developer",
+    "sourcehut": "developer",
+    # Messaging / Chat
+    "discord": "messaging",
+    "telegram": "messaging",
+    "matrix": "messaging",
+    "signal": "messaging",
+    "session": "messaging",
+    "tox": "messaging",
+    "simplex": "messaging",
+    "xmpp": "messaging",
+    "jabber": "messaging",
+    "skype": "messaging",
+    "whatsapp": "messaging",
+    "wire": "messaging",
+    "element": "messaging",
+    "icq": "messaging",
+    "viber": "messaging",
+    "line": "messaging",
+    "wechat": "messaging",
+    "snapchat": "messaging",
+    # Media / Audio
+    "spotify": "media",
+    "soundcloud": "media",
+    "bandcamp": "media",
+    "last.fm": "media",
+    "audiomack": "media",
+    "mixcloud": "media",
+    "deezer": "media",
+    "tidal": "media",
+    "apple music": "media",
+    # Social / Networks
+    "twitter": "social",
+    "x": "social",
+    "x (twitter)": "social",
+    "twitter/x": "social",
+    "instagram": "social",
+    "facebook": "social",
+    "reddit": "social",
+    "tiktok": "social",
+    "pinterest": "social",
+    "tumblr": "social",
+    "mastodon": "social",
+    "threads": "social",
+    "bluesky": "social",
+    "bsky": "social",
+    "medium": "social",
+    "substack": "social",
+    "youtube": "social",
+    "vimeo": "social",
+    "linkedin": "social",
+    "vk": "social",
+    "vkontakte": "social",
+    "weibo": "social",
+    "linktree": "social",
+    "patreon": "social",
+    "buymeacoffee": "social",
+    "disqus": "social",
+    "quora": "social",
+    "askfm": "social",
+    "flickr": "social",
+    "imgur": "social",
+    "deviantart": "social",
+    "artstation": "social",
+    "behance": "social",
+    "dribbble": "social",
+    "clubhouse": "social",
+    "letterboxd": "social",
+    "goodreads": "social",
+    "myanimelist": "social",
+    "about.me": "social",
+}
+
+CATEGORY_META: dict[str, dict[str, str]] = {
+    "all": {"label": "All", "color": "var(--accent-cyan)"},
+    "social": {"label": "Social", "color": "#60a5fa"},
+    "gaming": {"label": "Gaming", "color": "#c084fc"},
+    "developer": {"label": "Developer", "color": "#38bdf8"},
+    "messaging": {"label": "Messaging", "color": "#34d399"},
+    "media": {"label": "Media", "color": "#fbbf24"},
+    "other": {"label": "Other", "color": "#9ca3af"},
+}
+
+
+def categorize_platform(platform: str, url: str = "", tags: Optional[list[str]] = None) -> str:
+    """Categorize a platform name or URL into social, gaming, developer, messaging, media, or other."""
+    plat_lower = platform.strip().lower()
+    if plat_lower in PLATFORM_CATEGORIES:
+        return PLATFORM_CATEGORIES[plat_lower]
+
+    url_lower = url.lower()
+    if any(k in url_lower for k in ("steamcommunity", "roblox.com", "chess.com", "itch.io", "twitch.tv", "epicgames.com", "battle.net")):
+        return "gaming"
+    if any(k in url_lower for k in ("github.com", "gitlab.com", "docker.com", "pypi.org", "npmjs.com", "crates.io", "replit.com", "codeberg.org")):
+        return "developer"
+    if any(k in url_lower for k in ("discord.com", "t.me", "telegram.me", "matrix.to", "signal.me", "simplex.chat")):
+        return "messaging"
+    if any(k in url_lower for k in ("spotify.com", "soundcloud.com", "bandcamp.com", "last.fm")):
+        return "media"
+    if any(k in url_lower for k in ("twitter.com", "x.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com", "youtube.com", "threads.net", "bsky.app", "linkedin.com", "tumblr.com")):
+        return "social"
+
+    if tags:
+        for t in tags:
+            t_lower = t.lower()
+            if "game" in t_lower or "gaming" in t_lower:
+                return "gaming"
+            if "dev" in t_lower or "code" in t_lower or "tech" in t_lower:
+                return "developer"
+            if "message" in t_lower or "chat" in t_lower:
+                return "messaging"
+            if "music" in t_lower or "audio" in t_lower:
+                return "media"
+            if "social" in t_lower:
+                return "social"
+
+    return "other"
 
 
 def render_html_report(report: InvestigationReport) -> str:
@@ -247,43 +438,70 @@ def render_html_report(report: InvestigationReport) -> str:
         </div>
         """
 
-    # 3. Matched Profiles HTML
+    # 3. Matched Profiles HTML with Category Sections
     social_profiles_html = ""
     if report.social_profiles:
         rows = []
+        category_counts: dict[str, int] = defaultdict(int)
+
         for p in report.social_profiles:
+            cat = categorize_platform(p.platform, p.url, p.tags)
+            category_counts[cat] += 1
+
             is_discord = p.platform.lower() == "discord" or p.url.startswith("@")
             if is_discord:
                 url_display = f'<span class="font-mono text-cyan">{html.escape(p.url)}</span> <span class="text-muted text-xs">(Handle Registered)</span>'
             else:
                 url_display = f'<a href="{html.escape(p.url)}" target="_blank" rel="noopener noreferrer" class="link-external">{html.escape(p.url)} {ICON_LINK}</a>'
 
+            cat_label = CATEGORY_META.get(cat, {}).get("label", cat.title())
+
             rows.append(
                 f"""
-                <tr>
+                <tr class="profile-row" data-category="{cat}" data-platform="{html.escape(p.platform.lower())}">
                   <td class="font-semibold">{html.escape(p.platform)}</td>
+                  <td><span class="category-badge category-{cat}" onclick="filterProfileCategory('{cat}')" style="cursor: pointer;" title="Filter by {cat_label}">{cat_label}</span></td>
                   <td><span class="status-indicator-dot"></span> <span class="text-emerald">{html.escape(p.status)}</span></td>
                   <td>{url_display}</td>
                 </tr>
                 """
             )
 
+        # Build filter tabs: All first, followed by categories with > 0 matches
+        filter_tabs_html = [
+            f'<button type="button" class="filter-tab active" data-filter="all" onclick="filterProfileCategory(\'all\')">All <span class="tab-count">({len(report.social_profiles)})</span></button>'
+        ]
+        category_order = ["social", "gaming", "developer", "messaging", "media", "other"]
+        for cat in category_order:
+            if category_counts[cat] > 0:
+                cat_label = CATEGORY_META.get(cat, {}).get("label", cat.title())
+                filter_tabs_html.append(
+                    f'<button type="button" class="filter-tab" data-filter="{cat}" onclick="filterProfileCategory(\'{cat}\')">{cat_label} <span class="tab-count">({category_counts[cat]})</span></button>'
+                )
+
         social_profiles_html = f"""
         <div class="panel">
-          <div class="panel-header">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <span class="panel-title">{ICON_LINK} Matched Social Profiles ({len(report.social_profiles)})</span>
+            <div class="profile-filter-bar">
+              {''.join(filter_tabs_html)}
+            </div>
           </div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="data-table" id="profilesTable">
               <thead>
                 <tr>
                   <th style="width: 22%;">Platform</th>
-                  <th style="width: 18%;">Status</th>
+                  <th style="width: 16%;">Section</th>
+                  <th style="width: 14%;">Status</th>
                   <th>Profile URL / Handle</th>
                 </tr>
               </thead>
               <tbody>
                 {''.join(rows)}
+                <tr id="profileEmptyRow" style="display: none;">
+                  <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 24px;">No profiles found matching this section.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1433,6 +1651,103 @@ def render_html_report(report: InvestigationReport) -> str:
       text-decoration: underline;
     }}
 
+    /* Profile Category Filter Tabs & Badges */
+    .profile-filter-bar {{
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }}
+
+    .filter-tab {{
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      user-select: none;
+      transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease;
+    }}
+
+    .filter-tab:hover {{
+      background: var(--bg-surface-elevated);
+      border-color: var(--border-hover);
+      color: var(--text-primary);
+    }}
+
+    .filter-tab.active {{
+      background: rgba(56, 189, 248, 0.12);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }}
+
+    .tab-count {{
+      opacity: 0.75;
+      font-size: 10px;
+      font-family: var(--font-mono);
+    }}
+
+    .category-badge {{
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      font-size: 10px;
+      font-weight: 600;
+      border-radius: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      user-select: none;
+      transition: opacity 100ms ease, transform 100ms ease;
+    }}
+
+    .category-badge:hover {{
+      opacity: 0.85;
+      transform: translateY(-1px);
+    }}
+
+    .category-social {{
+      background: rgba(59, 130, 246, 0.12);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }}
+
+    .category-gaming {{
+      background: rgba(168, 85, 247, 0.12);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }}
+
+    .category-developer {{
+      background: rgba(6, 182, 212, 0.12);
+      color: #38bdf8;
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }}
+
+    .category-messaging {{
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }}
+
+    .category-media {{
+      background: rgba(245, 158, 11, 0.12);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }}
+
+    .category-other {{
+      background: rgba(107, 114, 128, 0.12);
+      color: #9ca3af;
+      border: 1px solid rgba(107, 114, 128, 0.3);
+    }}
+
     /* Leads */
     .leads-container {{
       padding: 14px 16px;
@@ -1682,6 +1997,34 @@ def render_html_report(report: InvestigationReport) -> str:
       setTimeout(() => {{
         toast.style.opacity = "0";
       }}, 1200);
+    }}
+
+    function filterProfileCategory(category) {{
+      const tabs = document.querySelectorAll(".filter-tab");
+      tabs.forEach(tab => {{
+        if (tab.getAttribute("data-filter") === category) {{
+          tab.classList.add("active");
+        }} else {{
+          tab.classList.remove("active");
+        }}
+      }});
+
+      const rows = document.querySelectorAll(".profile-row");
+      let visibleCount = 0;
+      rows.forEach(row => {{
+        const rowCat = row.getAttribute("data-category");
+        if (category === "all" || rowCat === category) {{
+          row.style.display = "";
+          visibleCount++;
+        }} else {{
+          row.style.display = "none";
+        }}
+      }});
+
+      const emptyRow = document.getElementById("profileEmptyRow");
+      if (emptyRow) {{
+        emptyRow.style.display = visibleCount === 0 ? "" : "none";
+      }}
     }}
 
     // Interactive Entity Force Graph

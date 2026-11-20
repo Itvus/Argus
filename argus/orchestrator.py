@@ -496,15 +496,24 @@ class InvestigationOrchestrator:
                 if gh_lead.bio:
                     gh_leads = extract_leads_from_text(gh_lead.bio)
                     self._merge_leads(report.pivot_leads, gh_leads)
+                if gh_lead.profile_url and not any(p.url.lower() == gh_lead.profile_url.lower() for p in report.social_profiles):
+                    report.social_profiles.append(SocialProfile(platform="GitHub", url=gh_lead.profile_url, status="Claimed"))
 
         # Process Gaming pivot results
         if isinstance(gaming_res, tuple) and len(gaming_res) == 2:
             gaming_data, gaming_status = gaming_res
             report.gaming = gaming_data
             report.module_statuses.append(gaming_status)
-            if gaming_data and gaming_data.steam and gaming_data.steam.summary:
-                st_leads = extract_leads_from_text(gaming_data.steam.summary)
-                self._merge_leads(report.pivot_leads, st_leads)
+            if gaming_data and gaming_data.steam:
+                if gaming_data.steam.summary:
+                    st_leads = extract_leads_from_text(gaming_data.steam.summary)
+                    self._merge_leads(report.pivot_leads, st_leads)
+                if gaming_data.steam.profile_url and not any(p.url.lower() == gaming_data.steam.profile_url.lower() for p in report.social_profiles):
+                    report.social_profiles.append(SocialProfile(platform="Steam", url=gaming_data.steam.profile_url, status="Claimed"))
+            if gaming_data and gaming_data.minecraft and gaming_data.minecraft.username:
+                mc_url = f"https://namemc.com/profile/{gaming_data.minecraft.username}"
+                if not any(p.platform.lower() == "minecraft" for p in report.social_profiles):
+                    report.social_profiles.append(SocialProfile(platform="Minecraft", url=mc_url, status="Claimed"))
 
         # Process Hudson Rock infostealer results
         if isinstance(hudson_res, tuple) and len(hudson_res) == 2:

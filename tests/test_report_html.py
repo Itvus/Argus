@@ -169,3 +169,46 @@ def test_cli_snowflake_html_generation(tmp_path: Path):
     content = target_html.read_text(encoding="utf-8")
     assert "<!DOCTYPE html>" in content
     assert "155149108183695360" in content
+
+
+def test_html_report_profile_categories_and_tabs(sample_report: InvestigationReport):
+    """Verify HTML report includes category filter tabs, badges, and clientside filter logic."""
+    from argus.report_html import categorize_platform
+
+    # 1. Categorization unit tests
+    assert categorize_platform("Steam") == "gaming"
+    assert categorize_platform("Chess.com") == "gaming"
+    assert categorize_platform("Roblox") == "gaming"
+    assert categorize_platform("GitHub") == "developer"
+    assert categorize_platform("GitLab") == "developer"
+    assert categorize_platform("PyPI") == "developer"
+    assert categorize_platform("Twitter") == "social"
+    assert categorize_platform("Reddit") == "social"
+    assert categorize_platform("Discord") == "messaging"
+    assert categorize_platform("Telegram") == "messaging"
+    assert categorize_platform("Spotify") == "media"
+
+    # Add a gaming profile to sample_report
+    sample_report.social_profiles.append(
+        SocialProfile(platform="Steam", url="https://steamcommunity.com/id/gamer", status="Claimed")
+    )
+
+    rendered = render_html_report(sample_report)
+
+    # 2. Check filter tabs (All active by default, plus category buttons)
+    assert 'class="filter-tab active" data-filter="all"' in rendered
+    assert 'data-filter="gaming"' in rendered
+    assert 'data-filter="developer"' in rendered
+    assert 'data-filter="social"' in rendered
+    assert 'data-filter="messaging"' in rendered
+
+    # 3. Check table rows have category attributes & badges
+    assert 'data-category="gaming"' in rendered
+    assert 'data-category="developer"' in rendered
+    assert 'data-category="social"' in rendered
+    assert 'data-category="messaging"' in rendered
+    assert 'class="category-badge category-gaming"' in rendered
+    assert 'class="category-badge category-developer"' in rendered
+
+    # 4. Check clientside filter function
+    assert "function filterProfileCategory(category)" in rendered
